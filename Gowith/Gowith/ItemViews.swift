@@ -233,8 +233,11 @@ struct ItemLibraryView: View {
         }
     }
 
+    @ViewBuilder
     private var locationGate: some View {
-        if let selectedPlace {
+        if locationService.needsPermissionRecovery {
+            GowithLocationRecoveryBanner()
+        } else if let selectedPlace {
             GowithInlineStatus(
                 title: canManageSelectedPlace ? "已在「\(selectedPlace.name)」范围内，可以管理物品" : "到达「\(selectedPlace.name)」约 50 米范围内可管理物品",
                 systemImage: canManageSelectedPlace ? "location.fill" : "lock.fill",
@@ -259,7 +262,10 @@ struct LibraryItemRow: View {
             stateIcon: isPacked ? "checkmark.circle.fill" : "circle",
             actionTitle: isPacked ? "从当前背包移除\(item.name)" : "加入当前背包\(item.name)",
             actionIcon: isPacked ? "minus" : "plus",
-            action: action
+            action: {
+                GowithHaptics.selection()
+                action()
+            }
         )
         .opacity(isPacked ? 0.82 : 1)
         .animation(reduceMotion ? nil : GowithMotion.row, value: isPacked)

@@ -45,7 +45,7 @@ struct RootView: View {
     private var mainInterface: some View {
         TabView(selection: $selectedTab) {
             BackpackView(onChooseItems: requestPickup)
-                .tabItem { Image(systemName: "backpack.fill").accessibilityLabel("背包") }
+                .tabItem { Label("背包", systemImage: "backpack.fill") }
                 .tag(AppTab.backpack)
 
             ItemLibraryView(
@@ -53,21 +53,21 @@ struct RootView: View {
                 onStartOuting: requestGo,
                 onPickup: requestPickup
             )
-            .tabItem { Image(systemName: "house.fill").accessibilityLabel("物品库") }
+            .tabItem { Label("物品库", systemImage: "archivebox.fill") }
             .tag(AppTab.library)
 
             Group {
                 if let activeSession = store.activeSession {
-                    GoView(items: items, currentSession: activeSession)
+                    GoView(currentSession: activeSession)
                 } else {
                     PlacesMapView(onTakeItems: requestPickup)
                 }
             }
-            .tabItem { Image(systemName: "map.fill").accessibilityLabel("地图") }
+            .tabItem { Label("地图", systemImage: "map.fill") }
             .tag(AppTab.map)
 
             ProfileView(sessions: sessions, items: items)
-                .tabItem { Image(systemName: "person.fill").accessibilityLabel("我的") }
+                .tabItem { Label("我的", systemImage: "person.fill") }
                 .tag(AppTab.profile)
         }
         .toolbarBackground(GowithColor.appBackground, for: .tabBar)
@@ -102,6 +102,7 @@ struct RootView: View {
             guard let placeID, let session = store.activeSession, session.status == .away,
                   let place = store.place(for: placeID) else { return }
             session.applyArrival(at: place)
+            GowithHaptics.success()
             store.save()
         }
         .onChange(of: selectedTab) { _, _ in store.processExpiredPending() }
@@ -162,6 +163,7 @@ struct RootView: View {
         session.wentOutAt = .now
         store.sessions.append(session)
         store.save()
+        GowithHaptics.stateChange()
         locationService.startMonitoring(session: session, places: store.places)
         selectedTab = .map
     }
@@ -225,6 +227,9 @@ struct GowithSetupView: View {
                         }
                         GowithSecondaryButton(title: coordinate == nil ? "使用当前位置" : "重新获取当前位置", systemImage: "location.fill") {
                             locationService.requestCurrentLocation()
+                        }
+                        if locationService.needsPermissionRecovery {
+                            GowithLocationRecoveryBanner()
                         }
                         MapReader { proxy in
                             Map(position: $setupCamera) {
@@ -337,9 +342,14 @@ struct BackpackView: View {
     @State private var showAddBackpack = false
     @State private var showAddItem = false
     @State private var showDeleteConfirmation = false
+    @State private var showHistory = false
     @State private var backpackToDelete: GowithBackpack?
 
     private var backpacks: [GowithBackpack] { store.backpacksAtSelectedPlace }
+    /// 跨所有会话的待确认物品数：超过 3 天会自动转遗失，需要在首屏可见。
+    private var pendingCount: Int {
+        store.sessions.reduce(0) { $0 + $1.items.filter { $0.status == .pending }.count }
+    }
     private var canManageSelectedPlace: Bool {
         guard let place = store.selectedPlace else { return false }
         return locationService.isInside(place)
@@ -365,6 +375,16 @@ struct BackpackView: View {
                         .accessibilityLabel("添加和取物品")
                     }
                     GowithContextStrip()
+                    if pendingCount > 0 {
+                        GowithStatusScene(
+                            color: GowithColor.sceneAmber,
+                            systemImage: "clock.badge.exclamationmark.fill",
+                            title: "\(pendingCount) 件物品待确认",
+                            message: "超过 3 天未确认会自动标记为遗失。",
+                            actionTitle: "去确认",
+                            action: { showHistory = true }
+                        )
+                    }
                     HStack(alignment: .firstTextBaseline) {
                         Text("选择一个背包")
                             .font(.headline.weight(.semibold))
@@ -392,6 +412,7 @@ struct BackpackView: View {
             .sheet(isPresented: $showAddBackpack) { BackpackEditorView() }
             .sheet(isPresented: $showAddItem) { ItemEditorView() }
             .sheet(item: $editingBackpack) { backpack in BackpackEditorView(backpack: backpack) }
+            .sheet(isPresented: $showHistory) { HistoryView() }
             .confirmationDialog("删除这个背包？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
                 Button("删除背包", role: .destructive) {
                     if let backpackToDelete { delete(backpackToDelete) }

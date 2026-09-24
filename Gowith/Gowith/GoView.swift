@@ -5,17 +5,14 @@ struct GoView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var store: GowithStore
     @EnvironmentObject private var locationService: LocationService
-    let items: [GowithItem]
-    let currentSession: OutingSession?
+    /// GoView 仅在有进行中会话时被实例化（见 RootView），会话非可选。
+    let currentSession: OutingSession
     @State private var showPendingAlert = false
     @State private var showHistory = false
     @State private var showPlaceChoice = false
-    @State private var selectedItemIDs: Set<UUID> = []
-    @State private var initializedSelection = false
     @State private var isReviewingArrival = false
 
     private var displayItems: [SessionItem] {
-        guard let currentSession else { return [] }
         if currentSession.status == .arrived && !isReviewingArrival { return [] }
         let items = currentSession.status == .preparing || currentSession.status == .arrived ? currentSession.items : currentSession.items.filter(\.isSelected)
         return items.sorted(by: { $0.nameSnapshot < $1.nameSnapshot })
@@ -31,13 +28,11 @@ struct GoView: View {
 
     /// 统计行使用的数据源：已到达但未开始检阅时，列表隐藏但统计应仍基于全部物品。
     private var statItems: [SessionItem] {
-        guard let currentSession else { return [] }
         if currentSession.status == .arrived && !isReviewingArrival { return currentSession.items }
         return displayItems
     }
 
     private var visibleItemCount: Int {
-        guard let currentSession else { return selectedItemIDs.count }
         if currentSession.status == .arrived && !isReviewingArrival {
             return currentSession.items.count
         }
@@ -48,18 +43,15 @@ struct GoView: View {
         NavigationStack {
           ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                if currentSession?.status == .away {
+                if currentSession.status == .away {
                     tripMap
                 }
                 taskCard
-                if currentSession?.status == .arrived {
+                if currentSession.status == .arrived {
                     tripMap
                 }
-                if currentSession == nil, !items.isEmpty {
-                    GowithSectionHeader(title: "出门清单", trailing: "\(selectedItemIDs.count) 件已选")
-                    selectionList
-                } else if displayItems.isEmpty {
-                    if currentSession?.status == .arrived && !isReviewingArrival {
+                if displayItems.isEmpty {
+                    if currentSession.status == .arrived && !isReviewingArrival {
                         arrivalReadyState
                     } else {
                         emptyState
@@ -76,7 +68,7 @@ struct GoView: View {
           .scrollIndicators(.hidden)
           .background(GowithColor.appBackground)
           .safeAreaInset(edge: .top, spacing: 0) {
-              GowithTopBar(pageTitle: currentSession?.status == .checking ? "回家清点" : "本次出行") {
+              GowithTopBar(pageTitle: currentSession.status == .checking ? "回家清点" : "本次出行") {
                   Button("历史记录", systemImage: "clock.arrow.circlepath") { showHistory = true }
                       .labelStyle(.iconOnly)
                       .foregroundStyle(GowithColor.primary)
@@ -89,7 +81,7 @@ struct GoView: View {
               .background(GowithColor.appBackground)
           }
           .safeAreaInset(edge: .bottom, spacing: 0) {
-              if let currentSession, currentSession.status == .arrived || currentSession.status == .checking {
+              if currentSession.status == .arrived || currentSession.status == .checking {
                   bottomAction
                       .padding(.horizontal, GowithMetrics.pagePadding)
                       .padding(.top, 10)
@@ -98,13 +90,8 @@ struct GoView: View {
                       .transition(.move(edge: .bottom).combined(with: .opacity))
               }
           }
-          .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: currentSession?.status)
+          .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: currentSession.status)
           .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: isReviewingArrival)
-          .onAppear {
-              guard !initializedSelection else { return }
-              selectedItemIDs = Set(items.map(\.id))
-              initializedSelection = true
-          }
           .sheet(isPresented: $showHistory) { HistoryView() }
           .alert("还有物品待确认", isPresented: $showPendingAlert) {
               Button("返回核对", role: .cancel) {}
@@ -145,8 +132,7 @@ struct GoView: View {
                         .clipShape(Circle())
                 }
 
-                if let currentSession,
-                   let backpack = store.backpacks.first(where: { $0.id == currentSession.backpackID }) {
+                if let backpack = store.backpacks.first(where: { $0.id == currentSession.backpackID }) {
                     HStack(spacing: 12) {
                         GowithBackpackPreview(backpack: backpack, size: 48)
                         VStack(alignment: .leading, spacing: 3) {
@@ -164,34 +150,26 @@ struct GoView: View {
                     .background(.white.opacity(0.34), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
 
-                if currentSession != nil {
-                    HStack(spacing: 16) {
-                        stat(value: "\(visibleItemCount)", label: "件物品")
-                        Divider().frame(height: 30)
-                        stat(value: "\(statItems.filter { $0.status == .pending || $0.status == .unconfirmed }.count)", label: "待确认")
-                        Divider().frame(height: 30)
-                        stat(value: "\(statItems.filter { $0.status == .lost }.count)", label: "已遗失")
-                    }
-                } else {
-                    HStack(spacing: 16) {
-                        stat(value: "\(selectedItemIDs.count)", label: "件物品已选")
-                        Divider().frame(height: 30)
-                        stat(value: "\(items.count)", label: "物品库")
-                    }
+                HStack(spacing: 16) {
+                    stat(value: "\(visibleItemCount)", label: "件物品")
+                    Divider().frame(height: 30)
+                    stat(value: "\(statItems.filter { $0.status == .pending || $0.status == .unconfirmed }.count)", label: "待确认")
+                    Divider().frame(height: 30)
+                    stat(value: "\(statItems.filter { $0.status == .lost }.count)", label: "已遗失")
                 }
 
-                if currentSession?.status != .arrived && currentSession?.status != .checking {
+                if currentSession.status != .arrived && currentSession.status != .checking {
                     primaryAction
                 }
-                if currentSession?.status == .away {
+                if currentSession.status == .away {
                     GowithSecondaryButton(title: "手动确认到家或地点", systemImage: "mappin.and.ellipse") {
                         showPlaceChoice = true
                     }
                 }
-                if currentSession?.status == .arrived {
+                if currentSession.status == .arrived {
                     Text(isReviewingArrival
-                         ? "选择要放在「\(currentSession?.destinationPlaceNameSnapshot ?? "该地点")」的物品；未选择的物品会继续随身携带。"
-                         : "已到达「\(currentSession?.destinationPlaceNameSnapshot ?? "该地点")」。准备好后，再开始检阅本次物品。")
+                         ? "选择要放在「\(currentSession.destinationPlaceNameSnapshot ?? "该地点")」的物品；未选择的物品会继续随身携带。"
+                         : "已到达「\(currentSession.destinationPlaceNameSnapshot ?? "该地点")」。准备好后，再开始检阅本次物品。")
                         .font(.footnote)
                         .foregroundStyle(GowithColor.secondary)
                 }
@@ -241,21 +219,19 @@ struct GoView: View {
 
     @ViewBuilder
     private var primaryAction: some View {
-        switch currentSession?.status {
-        case nil, .completed:
-            GowithBottomAction(title: "开始一次出门", systemImage: "arrow.up.right") { startSession() }
+        switch currentSession.status {
         case .preparing:
             GowithBottomAction(title: "确认带上这些物品", systemImage: "checkmark") { confirmLeaving() }
         case .away:
             GowithBottomAction(title: "我回来了，开始清点", systemImage: "house") { startChecking() }
-        case .arrived, .checking:
+        case .arrived, .checking, .completed:
             EmptyView()
         }
     }
 
     @ViewBuilder
     private var bottomAction: some View {
-        if currentSession?.status == .arrived {
+        if currentSession.status == .arrived {
             GowithBottomAction(
                 title: isReviewingArrival ? "完成放入目的地" : "开始检阅",
                 systemImage: isReviewingArrival ? "shippingbox.fill" : "checklist"
@@ -273,46 +249,18 @@ struct GoView: View {
             ForEach(Array(displayItems.enumerated()), id: \.element.id) { index, item in
                 SessionItemRow(
                     item: item,
-                    isPreparing: currentSession?.status == .preparing || (currentSession?.status == .arrived && isReviewingArrival),
-                    isChecking: currentSession?.status == .checking
+                    isPreparing: currentSession.status == .preparing || (currentSession.status == .arrived && isReviewingArrival),
+                    isChecking: currentSession.status == .checking
                 ) {
                     update(item, to: .returned)
                 } onPending: {
                     update(item, to: .pending)
                 } onToggleSelection: {
                     item.isSelected.toggle()
+                    GowithHaptics.selection()
                     store.save()
                 }
                 if index < displayItems.count - 1 { Divider().padding(.leading, 62) }
-            }
-        }
-    }
-
-    private var selectionList: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                Button {
-                    if selectedItemIDs.contains(item.id) { selectedItemIDs.remove(item.id) }
-                    else { selectedItemIDs.insert(item.id) }
-                } label: {
-                    HStack(spacing: 14) {
-                        ItemThumbnail(fileName: item.imageFileName, symbolName: item.symbolName, size: 48)
-                        Text(item.name)
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(GowithColor.primary)
-                        Spacer()
-                        Image(systemName: selectedItemIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 25, weight: .medium))
-                            .foregroundStyle(selectedItemIDs.contains(item.id) ? GowithColor.primary : GowithColor.tertiary)
-                            .frame(width: 44, height: 44)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .frame(minHeight: 74)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                if index < items.count - 1 { Divider().padding(.leading, 62) }
             }
         }
     }
@@ -321,8 +269,8 @@ struct GoView: View {
         GowithStatusScene(
             color: GowithColor.sceneMint,
             systemImage: "bag",
-            title: "还没有本次出门清单",
-            message: "开始一次出门后，从物品库选择要带上的东西。"
+            title: "本次清单为空",
+            message: "这次出门没有记录物品。下次可从物品库选择要携带的物品后再开始出行。"
         )
     }
 
@@ -336,60 +284,47 @@ struct GoView: View {
     }
 
     private var stateTitle: String {
-        switch currentSession?.status {
+        switch currentSession.status {
         case .preparing: return "准备出门"
         case .away: return "出门中"
         case .arrived: return "已到达地点"
         case .checking: return "回家清点"
-        case .completed, nil: return "准备出发"
+        case .completed: return "已完成"
         }
     }
 
     private var stateSubtitle: String {
-        switch currentSession?.status {
+        switch currentSession.status {
         case .preparing: return "选好今天要带的物品"
-        case .away: return "\(currentSession?.items.count ?? 0) 件物品已记录，回来后逐项清点"
+        case .away: return "\(currentSession.items.count) 件物品已记录，回来后逐项清点"
         case .arrived: return isReviewingArrival ? "选择要放下的物品" : "已到达，准备开始检阅"
         case .checking: return "确认每件物品是否带回"
-        case .completed, nil: return "用一分钟确认随身物品"
+        case .completed: return "本次出行已完成"
         }
     }
 
     private var stateIcon: String {
-        switch currentSession?.status {
+        switch currentSession.status {
         case .preparing: return "checklist"
         case .away: return "figure.walk"
         case .arrived: return "mappin.and.ellipse"
         case .checking: return "house"
-        case .completed, nil: return "sparkles"
+        case .completed: return "checkmark.circle.fill"
         }
     }
 
     private var taskSceneColor: Color {
-        switch currentSession?.status {
+        switch currentSession.status {
         case .away: return GowithColor.sceneSky
         case .arrived: return GowithColor.sceneMint
         case .checking: return GowithColor.sceneAmber
         case .preparing: return GowithColor.sceneViolet
-        case .completed, nil: return GowithColor.sceneMint
+        case .completed: return GowithColor.sceneMint
         }
-    }
-
-    private func startSession() {
-        guard !selectedItemIDs.isEmpty else { return }
-        let session = OutingSession()
-        items.filter { selectedItemIDs.contains($0.id) }.forEach { item in
-            let sessionItem = SessionItem(item: item)
-            session.items.append(sessionItem)
-        }
-        session.status = .away
-        session.wentOutAt = .now
-        store.sessions.append(session)
-        store.save()
     }
 
     private func confirmLeaving() {
-        guard let session = currentSession else { return }
+        let session = currentSession
         session.items.removeAll(where: { !$0.isSelected })
         guard !session.items.isEmpty else { return }
         session.status = .away
@@ -398,17 +333,18 @@ struct GoView: View {
     }
 
     private func startChecking() {
-        guard let session = currentSession else { return }
+        let session = currentSession
         locationService.stopMonitoring()
         session.status = .checking
         session.checkingStartedAt = .now
+        GowithHaptics.stateChange()
         store.save()
     }
 
     private func update(_ item: SessionItem, to status: SessionItemStatus) {
         item.status = status
         item.checkedAt = .now
-        if status == .pending { item.pendingSince = item.pendingSince ?? currentSession?.checkingStartedAt ?? .now }
+        if status == .pending { item.pendingSince = item.pendingSince ?? currentSession.checkingStartedAt ?? .now }
         if status == .returned { item.pendingSince = nil }
         store.save()
     }
@@ -419,7 +355,7 @@ struct GoView: View {
     }
 
     private func completeSession() {
-        guard let session = currentSession else { return }
+        let session = currentSession
         for item in unresolvedItems {
             item.status = .pending
             item.pendingSince = session.checkingStartedAt ?? .now
@@ -436,11 +372,12 @@ struct GoView: View {
             if let backpack = store.backpacks.first(where: { $0.id == session.backpackID }) { backpack.placeID = homeID }
         }
         locationService.stopMonitoring()
+        GowithHaptics.success()
         store.save()
     }
 
     private var sectionTitle: String {
-        switch currentSession?.status {
+        switch currentSession.status {
         case .checking: return "回家清点"
         case .arrived: return "选择放入的物品"
         default: return "本次物品"
@@ -448,21 +385,27 @@ struct GoView: View {
     }
 
     private func markArrived(at place: GowithPlace) {
-        guard let session = currentSession, session.status == .away else { return }
+        let session = currentSession
+        guard session.status == .away else { return }
         session.applyArrival(at: place)
         isReviewingArrival = false
         locationService.stopMonitoring()
+        GowithHaptics.stateChange()
         store.save()
     }
 
     private func beginArrivalReview() {
-        guard let session = currentSession, session.status == .arrived else { return }
+        let session = currentSession
+        guard session.status == .arrived else { return }
         for item in session.items { item.isSelected = true }
         isReviewingArrival = true
+        GowithHaptics.selection()
+        store.save()
     }
 
     private func completeArrival() {
-        guard let session = currentSession, let destinationID = session.destinationPlaceID,
+        let session = currentSession
+        guard let destinationID = session.destinationPlaceID,
               let destination = store.place(for: destinationID) else { return }
         let backpack = store.backpacks.first(where: { $0.id == session.backpackID })
         for sessionItem in session.items {
@@ -479,6 +422,7 @@ struct GoView: View {
         session.status = .completed
         session.completedAt = .now
         locationService.stopMonitoring()
+        GowithHaptics.success()
         store.selectPlace(destination)
         if let backpack { store.selectBackpack(backpack) }
         store.save()
@@ -494,53 +438,62 @@ struct SessionItemRow: View {
     let onToggleSelection: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 14) {
-                ItemThumbnail(fileName: item.imageFileNameSnapshot, symbolName: item.symbolNameSnapshot, size: 48)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(item.nameSnapshot)
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(GowithColor.primary)
-                    if item.status == .pending, let date = item.pendingSince {
-                        Text("请在 \(date.addingTimeInterval(3 * 24 * 60 * 60), format: .dateTime.month().day()) 前确认")
-                            .font(.caption)
-                            .foregroundStyle(GowithColor.secondary)
-                    } else if !isChecking {
-                        Text("出门清单")
-                            .font(.caption)
-                            .foregroundStyle(GowithColor.tertiary)
-                    }
-                }
-                Spacer()
-                if isPreparing {
-                    Button(action: onToggleSelection) {
-                        Image(systemName: item.isSelected ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 25, weight: .medium))
-                            .foregroundStyle(item.isSelected ? GowithColor.primary : GowithColor.tertiary)
-                            .frame(width: 44, height: 44)
-                    }
-                    .buttonStyle(.plain)
-                } else if isChecking {
-                    Button {
-                        if item.status == .returned { onPending() } else { onReturned() }
-                    } label: {
-                        HStack(spacing: 8) {
-                            Text(item.status == .returned ? "已带回" : "待确认")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(item.status == .returned ? GowithColor.primary : GowithColor.secondary)
-                            Image(systemName: item.status == .returned ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 25, weight: .medium))
-                                .foregroundStyle(item.status == .returned ? GowithColor.success : GowithColor.tertiary)
-                        }
-                        .frame(minWidth: 92, minHeight: 44, alignment: .trailing)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(item.status == .returned ? "已带回，点击改为待确认" : "待确认，点击标记为已带回")
-                } else {
-                    GowithStatusBadge(status: item.status)
+        if isChecking {
+            // 清点时是高频重复操作：整行都是目标区域，不需要瞄准右侧小按钮。
+            Button {
+                GowithHaptics.selection()
+                if item.status == .returned { onPending() } else { onReturned() }
+            } label: {
+                rowContent
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(item.status == .returned ? "\(item.nameSnapshot)，已带回" : "\(item.nameSnapshot)，待确认")
+            .accessibilityHint(item.status == .returned ? "双击改为待确认" : "双击标记为已带回")
+        } else {
+            rowContent
+        }
+    }
+
+    private var rowContent: some View {
+        HStack(spacing: 14) {
+            ItemThumbnail(fileName: item.imageFileNameSnapshot, symbolName: item.symbolNameSnapshot, size: 48)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(item.nameSnapshot)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(GowithColor.primary)
+                if item.status == .pending, let date = item.pendingSince {
+                    Text("请在 \(date.addingTimeInterval(3 * 24 * 60 * 60), format: .dateTime.month().day()) 前确认")
+                        .font(.caption)
+                        .foregroundStyle(GowithColor.secondary)
+                } else if !isChecking {
+                    Text("出门清单")
+                        .font(.caption)
+                        .foregroundStyle(GowithColor.tertiary)
                 }
             }
-            .frame(minHeight: 58)
+            Spacer()
+            if isPreparing {
+                Button(action: onToggleSelection) {
+                    Image(systemName: item.isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 25, weight: .medium))
+                        .foregroundStyle(item.isSelected ? GowithColor.primary : GowithColor.tertiary)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+            } else if isChecking {
+                HStack(spacing: 8) {
+                    Text(item.status == .returned ? "已带回" : "待确认")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(item.status == .returned ? GowithColor.primary : GowithColor.secondary)
+                    Image(systemName: item.status == .returned ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 25, weight: .medium))
+                        .foregroundStyle(item.status == .returned ? GowithColor.success : GowithColor.tertiary)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .frame(minWidth: 92, minHeight: 44, alignment: .trailing)
+            } else {
+                GowithStatusBadge(status: item.status)
+            }
         }
         .padding(.horizontal, 4)
         .frame(minHeight: 72)

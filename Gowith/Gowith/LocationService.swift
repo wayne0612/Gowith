@@ -1,5 +1,6 @@
 import CoreLocation
 import Foundation
+import UIKit
 import UserNotifications
 
 final class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
@@ -10,6 +11,17 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
 
     var isAuthorized: Bool {
         authorizationStatus == .authorizedAlways || authorizationStatus == .authorizedWhenInUse
+    }
+
+    /// 定位被拒绝或受限制时，UI 应提供「前往设置」恢复入口。
+    var needsPermissionRecovery: Bool {
+        authorizationStatus == .denied || authorizationStatus == .restricted
+    }
+
+    /// 跳转到本 App 的系统设置页。
+    func openSystemSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
     }
 
     private let manager = CLLocationManager()

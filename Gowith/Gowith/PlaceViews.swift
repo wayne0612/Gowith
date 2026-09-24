@@ -104,7 +104,10 @@ struct PlacesMapView: View {
                             .padding(.top, 12)
                     }
                     Spacer()
-                    if !locationService.statusMessage.isEmpty {
+                    if locationService.needsPermissionRecovery {
+                        GowithLocationRecoveryBanner()
+                            .padding(.bottom, 12)
+                    } else if !locationService.statusMessage.isEmpty {
                         Text(locationService.statusMessage)
                             .font(.caption)
                             .foregroundStyle(GowithColor.secondary)

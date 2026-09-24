@@ -48,6 +48,30 @@ enum GowithMotion {
     static let object = Animation.spring(response: 0.34, dampingFraction: 0.86)
 }
 
+/// 关键时刻的触觉反馈：到达提醒、清点勾选、开始/完成出行。
+enum GowithHaptics {
+    /// 清单勾选类轻反馈
+    static func selection() {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.prepare()
+        generator.impactOccurred()
+    }
+
+    /// 到达地点、完成出行等成功节点
+    static func success() {
+        let generator = UINotificationFeedbackGenerator()
+        generator.prepare()
+        generator.notificationOccurred(.success)
+    }
+
+    /// 开始出行等状态切换
+    static func stateChange() {
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.prepare()
+        generator.impactOccurred()
+    }
+}
+
 struct GowithCard<Content: View>: View {
     var padding: CGFloat = GowithMetrics.cardPadding
     @ViewBuilder var content: () -> Content
@@ -75,8 +99,7 @@ struct GowithPrimaryButton: View {
                 .font(.body.weight(.semibold))
                 .foregroundStyle(GowithColor.onPrimary)
                 .frame(maxWidth: .infinity, minHeight: 50)
-                .background(GowithColor.primary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .background(GowithColor.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -475,6 +498,42 @@ struct GowithInlineStatus: View {
             .padding(.vertical, 9)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(isPositive ? GowithColor.success.opacity(0.18) : GowithColor.softSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+/// 定位权限被拒后的恢复条：解释影响 + 一键跳转系统设置。
+struct GowithLocationRecoveryBanner: View {
+    @EnvironmentObject private var locationService: LocationService
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "location.slash.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(GowithColor.onPrimary)
+                .frame(width: 34, height: 34)
+                .background(GowithColor.primary, in: Circle())
+            VStack(alignment: .leading, spacing: 3) {
+                Text("定位未开启")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(GowithColor.primary)
+                Text("无法判断是否在地点范围内")
+                    .font(.caption2)
+                    .foregroundStyle(GowithColor.secondary)
+            }
+            Spacer(minLength: 8)
+            Button("前往设置") { locationService.openSystemSettings() }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(GowithColor.onPrimary)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 32)
+                .background(GowithColor.primary, in: Capsule())
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(GowithColor.softSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("定位未开启，无法判断是否在地点范围内。前往设置开启。")
+        .accessibilityHint("双击打开系统设置")
     }
 }
 
