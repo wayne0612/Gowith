@@ -260,10 +260,15 @@ final class GowithStore: ObservableObject {
     @Published var selectedBackpackID: UUID?
     private let fileURL: URL
 
-    init() {
-        let support = (try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)) ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
-        fileURL = support.appendingPathComponent("gowith-data.json")
+    /// fileURL 可注入以便单元测试使用临时目录；默认为 Application Support/gowith-data.json。
+    init(fileURL: URL? = nil) {
+        if let fileURL {
+            self.fileURL = fileURL
+        } else {
+            let support = (try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)) ?? URL(fileURLWithPath: NSTemporaryDirectory())
+            try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+            self.fileURL = support.appendingPathComponent("gowith-data.json")
+        }
         load()
         processExpiredPending()
     }
