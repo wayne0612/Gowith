@@ -69,7 +69,7 @@ struct LibraryPage: View {
                     leftLabel: "物品库总数",
                     rightValue: "\(packedCount)",
                     rightUnit: "件",
-                    rightLabel: "已装入背包",
+                    rightLabel: store.activeSession == nil ? "已装入背包" : "携带中",
                     ctaPlain: "点 ",
                     ctaAccent: "+ 装包",
                     texture: .flow
