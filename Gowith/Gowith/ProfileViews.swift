@@ -15,6 +15,7 @@ struct ProfilePage: View {
 
     private var itemCount: Int { store.visibleItems.count }
     private var completedCount: Int { store.sessions.filter { $0.status == .completed }.count }
+    private var pendingCount: Int { store.pendingItemCount }
     private var appVersion: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         return "v\(version)"
@@ -40,6 +41,38 @@ struct ProfilePage: View {
                         }
                         Spacer(minLength: 0)
                     }
+                }
+
+                // 待确认物品的显眼入口（不打扰式提醒）：仅在有待确认项时出现，点击进入历史补登。
+                if pendingCount > 0 {
+                    Button {
+                        showHistory = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "clock.badge.exclamationmark.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.92))
+                                .frame(width: 38, height: 38)
+                                .background(.white.opacity(0.18), in: Circle())
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("\(pendingCount) 件物品待确认")
+                                    .font(.system(size: 14, weight: .heavy, design: .rounded))
+                                    .foregroundStyle(.white)
+                                Text("3 天内未确认将自动标记为遗失")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.85))
+                            }
+                            Spacer(minLength: 8)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.8))
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, minHeight: 66)
+                        .background(GowithColor.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(pendingCount) 件物品待确认，打开历史记录补登")
                 }
 
                 if locationService.needsPermissionRecovery {
@@ -74,8 +107,6 @@ struct ProfilePage: View {
                 }
 
                 settingGroup(title: "账号") {
-                    settingRow(icon: "icloud", title: "iCloud 同步", value: "未开启")
-                    Divider().padding(.leading, 46)
                     Button {
                         showResetConfirm = true
                     } label: {
