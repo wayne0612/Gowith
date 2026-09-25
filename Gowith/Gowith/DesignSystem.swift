@@ -73,6 +73,10 @@ enum GowithMotion {
     static let tabSelect = Animation.easeInOut(duration: 0.25)
     static let content = Animation.easeInOut(duration: 0.24)
     static let row = Animation.easeInOut(duration: 0.19)
+    /// 添加菜单弹出
+    static let menu = Animation.spring(response: 0.32, dampingFraction: 0.8)
+    /// 基础/进阶模式切换的外壳过渡（弹性 + 明显缩放差）
+    static let modeSwitch = Animation.spring(response: 0.42, dampingFraction: 0.86)
 }
 
 /// 关键时刻的触觉反馈；「我的 → 触感反馈」可关闭（gowith.hapticsEnabled）。
@@ -158,7 +162,7 @@ struct ModeCapsule: View {
     private func select(_ target: AppMode) {
         guard target != mode else { return }
         withAnimation(reduceMotion ? nil : GowithMotion.capsule) { mode = target }
-        GowithHaptics.selection()
+        GowithHaptics.stateChange()
     }
 
     private func segment(_ title: String, isSelected: Bool) -> some View {
@@ -712,9 +716,14 @@ struct GowithTabBar: View {
             }
         }
         .padding(5)
-        .frame(maxWidth: .infinity)
-        .background(GowithColor.appBackground.opacity(0.96))
-        .overlay(alignment: .top) { Divider().opacity(0.4) }
+        .frame(maxWidth: .infinity, minHeight: 54)
+        .background(GowithColor.surface, in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(GowithColor.surfaceBorder, lineWidth: 1)
+                .allowsHitTesting(false)
+        }
+        .shadow(color: Color.black.opacity(scheme == .dark ? 0.45 : 0.10), radius: 14, y: 5)
     }
 
     private func tabButton(_ item: GowithTabItem) -> some View {
@@ -724,41 +733,37 @@ struct GowithTabBar: View {
             withAnimation(reduceMotion ? nil : GowithMotion.tabSelect) { selection = item.tab }
             GowithHaptics.selection()
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: item.icon)
-                    .font(.system(size: 14, weight: .semibold))
-                Text(item.title)
-                    .font(GowithFont.tabLabel)
-            }
-            .foregroundStyle(isSelected ? GowithColor.onPrimary : GowithColor.inkTertiary)
-            .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity, minHeight: 40)
-            .background {
-                if isSelected {
-                    Capsule()
-                        .fill(GowithColor.ink)
-                        .matchedGeometryEffect(id: "tab", in: capsuleSpace)
+            Image(systemName: item.icon)
+                .font(.system(size: 21, weight: .semibold))
+                .foregroundStyle(isSelected ? GowithColor.onPrimary : GowithColor.inkTertiary)
+                .scaleEffect(isSelected ? 1.14 : 1.0)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background {
+                    if isSelected {
+                        Capsule()
+                            .fill(GowithColor.ink)
+                            .matchedGeometryEffect(id: "tab", in: capsuleSpace)
+                    }
                 }
-            }
-            .overlay(alignment: .topTrailing) {
-                if item.badge > 0 {
-                    Text(item.badge > 99 ? "99+" : "\(item.badge)")
-                        .font(.system(size: 9, weight: .heavy, design: .rounded))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 4)
-                        .frame(minWidth: 15, minHeight: 15)
-                        .background(GowithColor.accent, in: Capsule())
-                        .offset(x: 12, y: -5)
-                        .modifier(BadgePulseModifier(token: item.badge))
+                .overlay(alignment: .topTrailing) {
+                    if item.badge > 0 {
+                        Text(item.badge > 99 ? "99+" : "\(item.badge)")
+                            .font(.system(size: 9, weight: .heavy, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 4)
+                            .frame(minWidth: 15, minHeight: 15)
+                            .background(GowithColor.accent, in: Capsule())
+                            .offset(x: 10, y: -4)
+                            .modifier(BadgePulseModifier(token: item.badge))
+                    }
                 }
-            }
-            .contentShape(Rectangle())
-            .background(
-                GeometryReader { geo in
-                    let frame = geo.frame(in: .named("root"))
-                    return Color.clear.preference(key: TabAnchorKey.self, value: [item.tab: CGPoint(x: frame.midX, y: frame.midY)])
-                }
-            )
+                .contentShape(Rectangle())
+                .background(
+                    GeometryReader { geo in
+                        let frame = geo.frame(in: .named("root"))
+                        return Color.clear.preference(key: TabAnchorKey.self, value: [item.tab: CGPoint(x: frame.midX, y: frame.midY)])
+                    }
+                )
         }
         .buttonStyle(.plain)
         .accessibilityLabel(item.title + (item.badge > 0 ? "，\(item.badge) 项待处理" : ""))
@@ -792,6 +797,7 @@ struct MainButtonArea: View {
     var isEnabled: Bool = true
     let action: () -> Void
     var showsFade: Bool = true
+    var horizontalPadding: CGFloat = GowithMetrics.pagePadding
 
     var body: some View {
         VStack(spacing: 0) {
@@ -811,10 +817,96 @@ struct MainButtonArea: View {
             .disabled(!isEnabled)
             .opacity(isEnabled ? 1 : 0.4)
             .accessibilityHint(isEnabled ? "" : "当前不可用")
-            .padding(.horizontal, GowithMetrics.pagePadding)
+            .padding(.horizontal, horizontalPadding)
             .padding(.top, 2)
             .padding(.bottom, 10)
         }
+    }
+}
+
+// MARK: - 悬浮添加按钮（＋：物品 / 背包 / 地点 三合一入口）
+
+struct GowithAddButton: View {
+    @Binding var isMenuOpen: Bool
+    let onItem: () -> Void
+    let onBackpack: () -> Void
+    let onPlace: () -> Void
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button {
+            GowithHaptics.selection()
+            withAnimation(reduceMotion ? nil : GowithMotion.menu) { isMenuOpen.toggle() }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(GowithColor.onPrimary)
+                .frame(width: 54, height: 54)
+                .background(GowithColor.ink, in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(GowithColor.surfaceBorder, lineWidth: 1)
+                        .allowsHitTesting(false)
+                }
+                .rotationEffect(.degrees(isMenuOpen ? 45 : 0))
+                .shadow(color: Color.black.opacity(scheme == .dark ? 0.45 : 0.12), radius: 14, y: 5)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("添加")
+        .accessibilityHint("添加物品、背包或地点")
+        .overlay(alignment: .bottom) {
+            if isMenuOpen {
+                addMenu
+                    .offset(y: -70)
+                    .transition(reduceMotion
+                                ? .opacity
+                                : .scale(scale: 0.7, anchor: .bottom).combined(with: .opacity))
+            }
+        }
+    }
+
+    private var addMenu: some View {
+        VStack(spacing: 4) {
+            menuRow(icon: "shippingbox.fill", title: "添加物品", action: onItem)
+            menuRow(icon: "backpack.fill", title: "添加背包", action: onBackpack)
+            menuRow(icon: "house.fill", title: "添加地点", action: onPlace)
+        }
+        .padding(6)
+        .background(GowithColor.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(GowithColor.surfaceBorder, lineWidth: 1)
+                .allowsHitTesting(false)
+        }
+        .shadow(color: Color.black.opacity(scheme == .dark ? 0.5 : 0.16), radius: 18, y: 6)
+    }
+
+    private func menuRow(icon: String, title: String, action: @escaping () -> Void) -> some View {
+        Button {
+            GowithHaptics.selection()
+            withAnimation(reduceMotion ? nil : GowithMotion.menu) { isMenuOpen = false }
+            action()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(GowithColor.ink)
+                    .frame(width: 30, height: 30)
+                    .background(GowithColor.softSurface, in: Circle())
+                Text(title)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(GowithColor.ink)
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 8)
+            .padding(.trailing, 24)
+            .frame(minWidth: 172, minHeight: 42)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 }
 
@@ -1027,6 +1119,8 @@ struct ItemThumbnail: View {
                 Image(uiImage: image).resizable().scaledToFill()
             } else if let image = LocalImageStore.cachedImage(fileName: fileName) {
                 Image(uiImage: image).resizable().scaledToFill()
+            } else if let entry = GowithIconLibrary.entry(for: symbolName) {
+                GowithLibraryIcon(entry: entry, size: size * 0.82)
             } else if let option = Gowith3DIconOption.option(for: symbolName) {
                 Gowith3DIcon(option: option, size: size * 0.8)
             } else {
@@ -1050,6 +1144,8 @@ struct GowithBackpackPreview: View {
         Group {
             if let backpack, let image = LocalImageStore.cachedImage(fileName: backpack.imageFileName) {
                 Image(uiImage: image).resizable().scaledToFit()
+            } else if let backpack, let entry = GowithIconLibrary.entry(for: backpack.symbolName) {
+                GowithLibraryIcon(entry: entry, size: size * 0.82)
             } else if let backpack, let option = Gowith3DIconOption.option(for: backpack.symbolName) {
                 Gowith3DIcon(option: option, size: size * 0.82)
             } else {

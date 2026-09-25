@@ -17,6 +17,21 @@ struct RootView: View {
     @State private var goMessage = ""
     @State private var showPendingAlert = false
     @State private var showManualArrive = false
+    @State private var showAddMenu = false
+    @State private var addTarget: AddTarget?
+
+    /// 设备底部安全区高度（34pt 刘海屏 / 0pt 实体 Home 键机型）。
+    /// 直接读 UIKit，不经 SwiftUI 布局参与，避免布局期状态反馈。
+    private var deviceBottomInset: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        return scenes.first?.windows.first?.safeAreaInsets.bottom ?? 0
+    }
+
+    /// 「＋」号聚合的三个添加动作（物品 / 背包 / 地点）。
+    private enum AddTarget: String, Identifiable {
+        case item, backpack, place
+        var id: String { rawValue }
+    }
 
     // 装包飞球动画状态（规格 2.4）
     @State private var packSourceAnchors: [PackAnchor] = []
@@ -83,6 +98,13 @@ struct RootView: View {
             .onChange(of: mode) { _, newMode in
                 if newMode == .basic && selectedTab == .map { selectedTab = .profile }
             }
+            .sheet(item: $addTarget) { target in
+                switch target {
+                case .item: ItemEditorView()
+                case .backpack: BackpackEditorView()
+                case .place: PlaceEditorView(place: nil)
+                }
+            }
     }
 
     private var navigationShell: some View {
@@ -90,30 +112,53 @@ struct RootView: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .id(selectedTab)
-                .transition(reduceMotion ? AnyTransition.opacity : AnyTransition.opacity.combined(with: .scale(scale: 0.99)))
+                .transition(reduceMotion ? AnyTransition.opacity : AnyTransition.opacity.combined(with: .scale(scale: 0.97)))
         }
         .background(GowithColor.appBackground)
         .safeAreaInset(edge: .top, spacing: 0) {
             AppHeader(mode: $mode)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            bottomControls
+            // 仅占位让滚动内容避开底栏；底栏本体在 overlay 里贴屏幕底边渲染
+            Color.clear.frame(height: bottomReservedHeight)
+                .animation(reduceMotion ? nil : GowithMotion.content, value: mainButton?.title)
         }
         .coordinateSpace(name: "root")
         .overlay { packBallOverlay }
+        .overlay(alignment: .bottom) {
+            bottomControls
+                .padding(.bottom, 8)
+                .ignoresSafeArea(.container, edges: .bottom)
+        }
         .onPreferenceChange(PackSourceKey.self) { packSourceAnchors = $0 }
         .onPreferenceChange(TabAnchorKey.self) { tabAnchors = $0 }
         .animation(reduceMotion ? nil : GowithMotion.content, value: selectedTab)
     }
 
+    /// 底栏总高：主按钮区（渐隐 26 + 按钮 48 + 上下 12）＋ Tab 栏 54 ＋ 间距 8。
+    private var bottomReservedHeight: CGFloat {
+        (mainButton == nil ? 0 : 86) + 62
+    }
+
+    /// 悬空底栏：胶囊 Tab 栏 + 常驻「＋」号，overlay + ignoresSafeArea 贴屏幕底边。
+    /// （不能用 safeAreaInset 内容 + offset 下移——那会破坏更新传导。）
     private var bottomControls: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 8) {
             if let button = mainButton {
-                MainButtonArea(title: button.title, isEnabled: button.isEnabled, action: button.action)
+                MainButtonArea(title: button.title, isEnabled: button.isEnabled,
+                               action: button.action, horizontalPadding: 0)
             }
-            GowithTabBar(items: tabItems, selection: $selectedTab)
+            HStack(spacing: 10) {
+                GowithTabBar(items: tabItems, selection: $selectedTab)
+                GowithAddButton(
+                    isMenuOpen: $showAddMenu,
+                    onItem: { addTarget = .item },
+                    onBackpack: { addTarget = .backpack },
+                    onPlace: { addTarget = .place }
+                )
+                .frame(width: 54, height: 54)
+            }
         }
-        .background(GowithColor.appBackground)
     }
 
     private func handleArrival(_ placeID: UUID?) {
