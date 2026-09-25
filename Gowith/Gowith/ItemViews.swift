@@ -374,7 +374,7 @@ struct IconPickerSection: View {
         }
         .task(id: selectedPhoto) {
             guard let selectedPhoto, let data = try? await selectedPhoto.loadTransferable(type: Data.self) else { return }
-            imageData = data
+            imageData = LocalImageStore.normalizedJPEGData(from: data)
         }
         .sheet(isPresented: $showCamera) { CameraPicker(imageData: $imageData) }
     }
@@ -942,7 +942,10 @@ struct CameraPicker: UIViewControllerRepresentable {
         let parent: CameraPicker
         init(_ parent: CameraPicker) { self.parent = parent }
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            if let image = info[.originalImage] as? UIImage { parent.imageData = image.jpegData(compressionQuality: 0.82) }
+            if let image = info[.originalImage] as? UIImage,
+               let raw = image.jpegData(compressionQuality: 0.82) {
+                parent.imageData = LocalImageStore.normalizedJPEGData(from: raw)
+            }
             parent.dismiss()
         }
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { parent.dismiss() }

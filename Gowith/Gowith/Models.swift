@@ -1,6 +1,7 @@
 import Combine
 import CoreLocation
 import Foundation
+import ImageIO
 import UIKit
 
 enum SessionStatus: String, Codable { case preparing, away, arrived, checking, completed }
@@ -426,6 +427,18 @@ final class GowithStore: ObservableObject {
 
 enum LocalImageStore {
     private static let cache = NSCache<NSString, UIImage>()
+
+    /// 保存前统一压缩：最长边 1024px、JPEG 0.82。相机原图可达 3–5MB/张，缩图后体积降一个数量级。
+    static func normalizedJPEGData(from data: Data, maxPixelSize: CGFloat = 1024) -> Data? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return data }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+        ]
+        guard let scaled = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return data }
+        return UIImage(cgImage: scaled).jpegData(compressionQuality: 0.82)
+    }
 
     static func save(data: Data) -> String? {
         let name = "\(UUID().uuidString).jpg"
