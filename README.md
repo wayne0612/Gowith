@@ -4,7 +4,9 @@
 
 Gowith 是一款纯本地、零依赖的 iOS 出行物品管理 App。它记录的不是待办事项，而是一件真实物品的空间旅程：从某个家出发、跟着你移动、在另一个地点被放下、最后被确认带回。
 
-![Platform](https://img.shields.io/badge/platform-iOS%2017%2B-blue) ![Framework](https://img.shields.io/badge/SwiftUI-iOS%2017-orange) ![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen) ![Version](https://img.shields.io/badge/version-1.0.0-blueviolet)
+自 v1.0.1 起，App 提供**基础 / 进阶双模式**（右上角胶囊开关随时切换）：基础模式以黑白极简视觉聚焦「添加物品 → 装包出行 → 回家清点」核心闭环，进阶模式整体转深色并解锁地图与历史统计。
+
+![Platform](https://img.shields.io/badge/platform-iOS%2017%2B-blue) ![Framework](https://img.shields.io/badge/SwiftUI-iOS%2017-orange) ![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen) ![Version](https://img.shields.io/badge/version-1.0.1-blueviolet)
 
 ## 它解决什么问题
 
@@ -27,20 +29,19 @@ Gowith 的世界由一条对象关系链构成：
 
 ## 功能特性
 
-### 🎒 背包
-- 横向轮播选择背包，前后对象缩小模糊露出边缘，形成空间层级
-- 内置 8 个纯 SwiftUI 绘制的伪 3D 图标，也可用 SF Symbols 或相册照片自定义
-- 查看已装物品清单，一键增删
+### 🎛 基础模式（默认 · 浅色 4 Tab）
 
-### 🗃 物品库
-- 按地点 + 分类管理物品，支持自定义分类
-- 相机拍照或从相册选图作为物品图标（图片本地存储并做内存缓存）
-- 就地装包、发起出行
+聚焦核心闭环，每个页面由黑色资产卡片给出当前数字与下一步引导：
 
-### 🗺 地图与地点
-- 地图查看所有已保存地点与当前位置
-- 新建地点支持「使用当前位置」与「地图点选」双通道
-- 到达地点范围约 50 米内才允许拿取或调整该地点的物品（防止远程误操作）
+- **物品库**：按分类分组的货架清单；109 枚命名图标库（13 类、可搜索）+ 相机/相册自定义图标；点「+」装入背包，触发飞球动画与 Tab 角标联动
+- **拿东西**：当前背包清单 +「可能还想带」建议卡，悬浮按钮一键「开始出行（N 件）」
+- **检查**：回家清点，整行打勾切换「已带回 / 待确认」；未确认项保留 3 天宽限期，到期自动标记遗失并在首屏提示
+- **我的**：偏好设置（外观/提醒/触感）、重看教学动画、历史记录入口与数据管理
+
+### 🌙 进阶模式（深色 5 Tab）
+
+- 解锁**地图与地点**（围栏管理、地点库存）与**历史与统计**（清点完成率、连续零遗失天数）
+- 全局切换为深色主题；历史页从「我的」进入，不占 Tab 位
 
 ### 🚶 出行会话（产品的灵魂）
 
@@ -76,7 +77,7 @@ stateDiagram-v2
 
 - **零第三方依赖**：不使用任何外部库、无后端、无网络请求
 - **伪 3D 图标**：多层 SF Symbol 叠加渐变与高光，纯 SwiftUI 绘制（`Gowith3DIcon`）
-- **自建设计系统**：色彩（自动适配深色模式）、间距、动效曲线、触感反馈集中在 `DesignSystem.swift`，约 20 个通用组件复用全 App
+- **自建设计系统**：黑白令牌组（浅 / 深两套自动适配）、间距、动效曲线、触感反馈集中在 `DesignSystem.swift`，基础 / 进阶模式经 `preferredColorScheme` 整体翻转，约 20 个通用组件复用全 App
 - **可访问性**：状态永远「图标 + 文字」双通道表达，全量中文 VoiceOver 标签，触控目标 ≥ 44pt，支持动态字体与 Reduce Motion 降级
 
 ## 项目结构
@@ -86,14 +87,15 @@ Gowith/
 ├── Gowith.xcodeproj
 └── Gowith/
     ├── GowithApp.swift        # App 入口与全局外观配置
-    ├── RootView.swift         # 启动流程（Hero/引导）、主导航、背包页
+    ├── RootView.swift         # 启动流程（教学动画/引导）、双模式主导航
     ├── Models.swift           # 数据模型、GowithStore 持久化、本地图片存储
     ├── LocationService.swift  # 定位授权、地理围栏监测、到达通知
     ├── GoView.swift           # 出行会话全流程界面（出门/到达/清点）
-    ├── ItemViews.swift        # 物品库、分类与物品编辑器
+    ├── ItemViews.swift        # 物品库货架、分类与物品编辑器
     ├── PlaceViews.swift       # 地点地图与地点编辑器
     ├── ProfileViews.swift     # 我的、历史记录与会话详情
-    ├── DesignSystem.swift     # 设计系统：色彩、动效、触感与通用组件
+    ├── GowithIconLibrary.swift # 物品图标库：109 枚命名图标 / 13 分类（可搜索）
+    ├── DesignSystem.swift     # 设计系统：黑白令牌、Tab 栏、悬浮按钮、资产卡与通用组件
     └── Gowith3DIcon.swift     # 纯 SwiftUI 伪 3D 图标
 ```
 
@@ -109,8 +111,12 @@ open Gowith/Gowith.xcodeproj
 
 在 Xcode 中选择目标设备后 `Cmd + R` 运行即可，无需安装任何依赖。
 
-> 💡 首次启动会进入引导流程：命名你的第一个「家」、创建第一个背包、添加第一件物品。
+> 💡 首次启动会播放三帧教学动画，随后进入引导流程：命名你的第一个「家」、创建第一个背包、添加第一件物品。
 > 地理围栏的后台到达提醒需要授予「始终定位」权限；模拟器可通过 **Features → Location** 模拟移动来体验围栏触发。
+
+### 真机安装（免开发者账号）
+
+仓库 [Releases](https://github.com/wayne0612/Gowith/releases) 提供**未签名 ipa**（`dist/` 目录亦有存档），可用免费 Apple ID 经 Sideloadly / AltStore 自行签名侧载（7 天有效期，可续签），步骤见 [docs/iPhone安装教程.md](docs/iPhone安装教程.md)。
 
 ## 隐私与数据
 
@@ -129,12 +135,14 @@ open Gowith/Gowith.xcodeproj
 
 ## 项目文档
 
+- [CHANGELOG](CHANGELOG.md) —— 各版本改动日志
 - [Gowith 产品原型报告](Gowith-产品原型报告.md) —— 完整 PRD：信息架构、状态机、页面与数据模型
 - [Gowith 设计系统规范](Gowith-Design-System.md) —— 唯一生效的设计规范 v2.0
 - [UI System](UI-system.md) / [UIUX Motion Design](uiuxmotion-design.md) —— 视觉与动效设计过程稿
 
 ## 版本
 
-- **v1.0.0**（当前）—— 纯本地 MVP：地点 / 背包 / 物品库 / 出行会话状态机 / 地理围栏提醒 / 历史记录
+- **v1.0.1**（当前）—— 基础 / 进阶双模式 + 黑白极简视觉 + 物品图标库（109 枚 / 13 类）+ 首启教学动画，详见 [CHANGELOG](CHANGELOG.md)
+- **v1.0.0** —— 纯本地 MVP：地点 / 背包 / 物品库 / 出行会话状态机 / 地理围栏提醒 / 历史记录
 
 后续方向（详见产品原型报告）：真机围栏回归、GowithStore 单元测试、Widget 快捷入口、多背包出行、云端同步。
