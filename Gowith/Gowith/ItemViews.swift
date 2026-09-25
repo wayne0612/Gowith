@@ -229,6 +229,19 @@ struct IconPickerSection: View {
     @Binding var symbolName: String
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var showCamera = false
+    @State private var iconQuery = ""
+    @State private var iconCategory: GowithIconCategory?
+
+    /// 背包编辑器默认落在「包袋箱包」分类
+    init(imageData: Binding<Data?>, symbolName: Binding<String>, preferredCategory: GowithIconCategory? = nil) {
+        _imageData = imageData
+        _symbolName = symbolName
+        _iconCategory = State(initialValue: preferredCategory)
+    }
+
+    private var libraryEntries: [GowithIconEntry] {
+        GowithIconLibrary.search(iconQuery, category: iconCategory)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -271,35 +284,61 @@ struct IconPickerSection: View {
 
             Divider().padding(.vertical, 2)
 
-            Text("3D 图标")
+            Text("图标库 · \(libraryEntries.count) 枚")
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(GowithColor.inkSecondary)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 8) {
-                ForEach(Gowith3DIconOption.all) { option in
-                    Button {
-                        symbolName = option.id
-                        imageData = nil
-                    } label: {
-                        VStack(spacing: 3) {
-                            Gowith3DIcon(option: option, size: 38)
-                            Text(option.title)
-                                .font(.system(size: 9))
-                                .foregroundStyle(GowithColor.inkSecondary)
-                                .lineLimit(1)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 60)
-                        .background(
-                            symbolName == option.id && imageData == nil
-                                ? RoundedRectangle(cornerRadius: 12, style: .continuous).fill(GowithColor.softSurface)
-                                : RoundedRectangle(cornerRadius: 12, style: .continuous).fill(GowithColor.softSurface.opacity(0.5))
-                        )
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(symbolName == option.id && imageData == nil ? GowithColor.ink : .clear, lineWidth: 1.5).allowsHitTesting(false)
-                        }
+
+            TextField("搜索：背包、钥匙、充电、雨伞…", text: $iconQuery)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+                .padding(.horizontal, 10)
+                .frame(minHeight: 32)
+                .background(GowithColor.softSurface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    categoryChip(nil, "全部")
+                    ForEach(GowithIconCategory.allCases) { cat in
+                        categoryChip(cat, cat.rawValue)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("选择3D图标：\(option.title)")
+                }
+                .padding(.vertical, 2)
+            }
+
+            if libraryEntries.isEmpty {
+                Text("没有匹配的图标，换个词试试")
+                    .font(.system(size: 11))
+                    .foregroundStyle(GowithColor.inkTertiary)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            } else {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 5), spacing: 8) {
+                    ForEach(libraryEntries) { entry in
+                        Button {
+                            symbolName = entry.id
+                            imageData = nil
+                        } label: {
+                            VStack(spacing: 3) {
+                                GowithLibraryIcon(entry: entry, size: 34)
+                                Text(entry.name)
+                                    .font(.system(size: 8.5, weight: .medium))
+                                    .foregroundStyle(GowithColor.inkSecondary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 56)
+                            .background(
+                                symbolName == entry.id && imageData == nil
+                                    ? RoundedRectangle(cornerRadius: 12, style: .continuous).fill(GowithColor.softSurface)
+                                    : RoundedRectangle(cornerRadius: 12, style: .continuous).fill(GowithColor.softSurface.opacity(0.5))
+                            )
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(symbolName == entry.id && imageData == nil ? GowithColor.ink : .clear, lineWidth: 1.5).allowsHitTesting(false)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("选择图标：\(entry.name)")
+                    }
                 }
             }
 
@@ -332,6 +371,21 @@ struct IconPickerSection: View {
             imageData = data
         }
         .sheet(isPresented: $showCamera) { CameraPicker(imageData: $imageData) }
+    }
+
+    private func categoryChip(_ category: GowithIconCategory?, _ title: String) -> some View {
+        let isSelected = iconCategory == category
+        return Button {
+            withAnimation(GowithMotion.row) { iconCategory = category }
+        } label: {
+            Text(title)
+                .font(.system(size: 11, weight: isSelected ? .bold : .medium))
+                .foregroundStyle(isSelected ? GowithColor.onPrimary : GowithColor.inkSecondary)
+                .padding(.horizontal, 11)
+                .frame(minHeight: 26)
+                .background(isSelected ? GowithColor.ink : GowithColor.softSurface, in: Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     private let symbolOptions = ["square.dashed", "iphone", "key.fill", "wallet.pass.fill", "airpods", "battery.100percent", "umbrella.fill", "book.fill", "pill.fill", "eyeglasses", "laptopcomputer", "creditcard.fill"]
@@ -799,7 +853,7 @@ struct BackpackEditorView: View {
     init(backpack: GowithBackpack? = nil) {
         self.backpack = backpack
         _name = State(initialValue: backpack?.name ?? "")
-        _symbolName = State(initialValue: backpack?.symbolName ?? "gowith3d.backpack")
+        _symbolName = State(initialValue: backpack?.symbolName ?? "bag.backpack.classic")
         _imageData = State(initialValue: LocalImageStore.load(fileName: backpack?.imageFileName))
     }
 
@@ -825,7 +879,7 @@ struct BackpackEditorView: View {
                         }
                     }
                     ContentCard {
-                        IconPickerSection(imageData: $imageData, symbolName: $symbolName)
+                        IconPickerSection(imageData: $imageData, symbolName: $symbolName, preferredCategory: .bags)
                     }
                 }
                 .padding(.horizontal, 16)
