@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gowith · 一级 / 二级页面预览（含价值体系与引导升级）</title>
+<style>
+  :root{
+    --bg:#F2F2F4; --dark:#101012; --surface:#FFFFFF; --border:#ECECF0; --border-dark:#26262B;
+    --ink:#111111; --ink2:#71717A; --ink3:#A1A1AA;
+    --accent:#FF5A26; --accent-soft:#FF8C5A;
+    --card-dark-1:#26262B; --card-dark-2:#000000;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{background:#E8E8EC;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Helvetica Neue",sans-serif;color:var(--ink);padding:36px 28px 80px}
+  h1{font-size:26px;font-weight:800;letter-spacing:-.5px}
+  h1 .dot{color:var(--accent)}
+  .sub{color:var(--ink2);font-size:13px;margin:8px 0 6px;line-height:1.7;max-width:900px}
+  h2.section{font-size:17px;font-weight:800;margin:44px 0 6px;letter-spacing:-.2px}
+  h2.section small{font-weight:600;color:var(--ink2);font-size:12px;margin-left:10px}
+  .note{font-size:12px;color:var(--ink2);margin-bottom:14px;line-height:1.7;max-width:900px}
+  .grid{display:flex;flex-wrap:wrap;gap:30px;align-items:flex-start}
+  .item{display:flex;flex-direction:column;gap:9px}
+  .cap{font-size:12px;font-weight:700;color:var(--ink)}
+  .cap small{font-weight:500;color:var(--ink2);margin-left:6px}
+
+  /* ===== 手机框 ===== */
+  .phone{width:302px;height:648px;border-radius:46px;border:9px solid #17171a;background:var(--bg);overflow:hidden;position:relative;box-shadow:0 18px 40px rgba(0,0,0,.16);flex-shrink:0}
+  .phone.dark{background:var(--dark)}
+  .statusbar{height:34px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 22px 2px;font-size:11px;font-weight:700;color:var(--ink)}
+  .dark .statusbar{color:#F4F4F5}
+  .notch{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:84px;height:20px;background:#17171a;border-radius:12px}
+  .screen{height:calc(100% - 34px);overflow:hidden;position:relative;display:flex;flex-direction:column}
+
+  /* ===== 头部 ===== */
+  .apphead{display:flex;align-items:center;justify-content:space-between;padding:10px 14px 8px}
+  .brand{font-size:19px;font-weight:800;letter-spacing:-.4px}
+  .brand i{font-style:normal;color:var(--accent)}
+  .dark .brand{color:#F4F4F5}
+  .mode{display:flex;background:rgba(255,255,255,.85);border:1px solid #E4E4E7;border-radius:999px;padding:2px;font-size:10px;font-weight:700;color:var(--ink3)}
+  .dark .mode{background:rgba(255,255,255,.08);border-color:var(--border-dark)}
+  .mode span{padding:3px 10px;border-radius:999px}
+  .mode .on{background:var(--ink);color:var(--on-p,#fff);border-radius:999px}
+  .dark .mode .on{background:#F4F4F5;color:#111}
+
+  /* ===== 内容 ===== */
+  .content{flex:1;overflow:hidden;padding:2px 14px 0;display:flex;flex-direction:column;gap:9px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:18px}
+  .dark .card{background:rgba(255,255,255,.05);border-color:var(--border-dark)}
+
+  /* 资产卡 */
+  .asset{background:linear-gradient(160deg,var(--card-dark-1) 0%,var(--card-dark-2) 72%);border-radius:20px;padding:13px 15px 12px;color:#fff;position:relative;overflow:hidden}
+  .asset.darkvar{background:linear-gradient(160deg,#2E2E33 0%,var(--dark) 78%);border:1px solid var(--border-dark)}
+  .asset::after{content:"";position:absolute;right:-34px;top:-40px;width:150px;height:150px;border:1.5px solid rgba(255,255,255,.09);border-radius:50%}
+  .asset-top{display:flex;justify-content:space-between;align-items:center;font-size:9px;letter-spacing:2px;font-weight:700;color:rgba(255,255,255,.5)}
+  .asset-top .bdg{color:var(--accent-soft);letter-spacing:0;font-size:10px}
+  .asset-mid{display:flex;align-items:stretch;margin:10px 0 8px}
+  .cell{flex:1;text-align:center}
+  .cell .row{display:flex;align-items:baseline;justify-content:center;gap:3px}
+  .num{font-size:40px;font-weight:800;letter-spacing:-2px;line-height:1}
+  .num.sm{font-size:34px}
+  .cell .un{font-size:11px;font-weight:600;color:rgba(255,255,255,.45)}
+  .cell .lb{font-size:9.5px;font-weight:600;color:rgba(255,255,255,.55);letter-spacing:1px;margin-top:3px}
+  .cell.right .num{color:var(--accent)}
+  .vline{width:0;border-left:1.5px dashed rgba(255,255,255,.28);margin:2px 8px}
+  .dist{font-size:9.5px;color:rgba(255,255,255,.55);text-align:center;padding-top:7px;border-top:1px solid rgba(255,255,255,.12);letter-spacing:.5px}
+  .dist b{color:rgba(255,255,255,.85);font-weight:700}
+  .asset-cta{font-size:10px;text-align:center;color:rgba(255,255,255,.85);margin-top:9px}
+  .asset-cta b{color:var(--accent)}
+
+  /* 胶囊 chips */
+  .chips{display:flex;gap:6px;align-items:center}
+  .chip{font-size:10.5px;font-weight:600;color:var(--ink2);background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:5px 11px;white-space:nowrap}
+  .dark .chip{background:rgba(255,255,255,.05);border-color:var(--border-dark);color:#8B8B93}
+  .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .dark .chip.on{background:#F4F4F5;color:#111;border-color:#F4F4F5}
+  .chip.add{font-weight:800}
+
+  /* 行 */
+  .rows{padding:3px 11px}
+  .row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #F0F0F2}
+  .dark .row{border-color:rgba(255,255,255,.07)}
+  .row:last-child{border-bottom:none}
+  .thumb{width:36px;height:36px;border-radius:11px;background:#F0F0F2;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+  .thumb.packed{background:var(--ink)}
+  .dark .thumb{background:rgba(255,255,255,.09)}
+  .meta{flex:1;min-width:0}
+  .meta .n{font-size:12.5px;font-weight:700}
+  .dark .meta .n{color:#F4F4F5}
+  .meta .s{font-size:9.5px;color:var(--ink3);margin-top:2px;font-weight:500}
+  .meta .s.acc{color:var(--accent);font-weight:600}
+  .pbtn{width:27px;height:27px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;flex-shrink:0}
+  .pbtn.x{background:var(--accent);transform:rotate(45deg)}
+  .pbtn.ck{background:var(--ink)}
+  .pbtn.dis{background:#E4E4E7;color:#A1A1AA}
+  .dark .pbtn{background:#F4F4F5;color:#111}
+  .dark .pbtn.x{background:var(--accent);color:#fff}
+  .price{font-size:9.5px;color:var(--ink2);font-weight:600}
+  .dark .price{color:#8B8B93}
+
+  /* 提示卡 */
+  .note-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:11px 13px}
+  .dark .note-card{background:rgba(255,255,255,.05);border-color:var(--border-dark)}
+  .note-card .t{font-size:11px;font-weight:800;display:flex;align-items:center;gap:5px}
+  .note-card .t .ic{color:var(--accent)}
+  .note-card li{list-style:none;font-size:10px;color:var(--ink2);margin-top:5px;display:flex;gap:5px;line-height:1.5}
+  .note-card li::before{content:"➤";color:var(--accent);font-size:8px;margin-top:1px}
+  .locknote{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:10px 13px;font-size:10.5px;color:var(--ink2);display:flex;gap:8px;align-items:center}
+  .dark .locknote{background:rgba(255,255,255,.05);border-color:var(--border-dark)}
+  .locknote .lk{color:var(--accent);font-size:12px}
+  .locknote b{color:var(--ink);font-weight:800;font-size:11px}
+  .dark .locknote b{color:#F4F4F5}
+
+  /* 底栏 */
+  .bottom{padding:6px 10px 10px;display:flex;flex-direction:column;gap:8px}
+  .mainbtn{background:var(--ink);color:#fff;border-radius:999px;text-align:center;font-size:12.5px;font-weight:800;padding:13px;letter-spacing:.3px}
+  .mainbtn.dis{background:#C7C7CC;color:#F2F2F4}
+  .dark .mainbtn{background:#F4F4F5;color:#111}
+  .dark .mainbtn.dis{background:rgba(255,255,255,.14);color:rgba(255,255,255,.4)}
+  .tabwrap{display:flex;gap:8px;align-items:center}
+  .tabbar{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:999px;display:flex;justify-content:space-around;align-items:center;padding:8px 6px;box-shadow:0 6px 18px rgba(0,0,0,.06);position:relative}
+  .dark .tabbar{background:rgba(255,255,255,.07);border-color:var(--border-dark)}
+  .tab{width:34px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:999px;color:var(--ink3);position:relative}
+  .tab.on{background:var(--ink);color:#fff}
+  .dark .tab.on{background:#F4F4F5;color:#111}
+  .tab .bd{position:absolute;top:-4px;right:-6px;background:var(--accent);color:#fff;font-size:8px;font-weight:800;min-width:14px;height:14px;border-radius:999px;display:flex;align-items:center;justify-content:center;padding:0 3px}
+  .fab{width:46px;height:46px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 8px 18px rgba(0,0,0,.22)}
+  .dark .fab{background:#F4F4F5;color:#111}
+  .fab .v{font-size:24px;font-weight:500;margin-top:-2px}
+  svg.ic{width:17px;height:17px;fill:currentColor}
+
+  /* sheet 类二级页 */
+  .dimtop{flex:1;background:rgba(0,0,0,.28)}
+  .sheet{background:var(--bg);border-radius:22px 22px 0 0;padding:10px 14px 14px;display:flex;flex-direction:column;gap:9px;min-height:0;overflow:hidden;flex:2.2}
+  .sheet .nav{display:flex;align-items:center;justify-content:space-between;padding:2px 0 6px;border-bottom:1px solid var(--border)}
+  .sheet .nav .c{font-size:11px;color:var(--ink2);font-weight:600}
+  .sheet .nav .t{font-size:13px;font-weight:800}
+  .sheet .nav .sv{font-size:11px;font-weight:800;color:var(--accent)}
+  .f-label{font-size:10px;font-weight:800;color:var(--ink2);letter-spacing:.5px}
+  .f-input{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:9px 11px;font-size:12px;font-weight:600;color:var(--ink);display:flex;justify-content:space-between;align-items:center}
+  .f-input .ph{color:var(--ink3);font-weight:500}
+  .f-input .cur{border-left:2px solid var(--accent);padding-left:1px;margin-left:-2px}
+  .statbar{background:var(--surface);border:1px solid var(--border);border-radius:14px;display:flex;padding:9px 0}
+  .statbar .sc{flex:1;text-align:center;border-right:1px solid #F0F0F2}
+  .statbar .sc:last-child{border-right:none}
+  .statbar .v{font-size:14px;font-weight:800}
+  .statbar .v.acc{color:var(--accent)}
+  .statbar .k{font-size:8.5px;color:var(--ink3);font-weight:600;margin-top:2px;letter-spacing:.5px}
+  .icogrid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+  .icogrid .g{background:var(--surface);border:1px solid var(--border);border-radius:12px;min-height:46px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:16px}
+  .icogrid .g span{font-size:7.5px;color:var(--ink2);font-weight:600}
+  .icogrid .g.on{background:var(--ink)}
+  .icogrid .g.on span{color:#fff}
+
+  /* 特殊帧 */
+  .hero{flex:1;background:#0B0B0C;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
+  .hero .wm{font-size:38px;font-weight:800;color:#fff;letter-spacing:-1px}
+  .hero .wm i{font-style:normal;color:var(--accent);display:inline-block;animation:drop 1s cubic-bezier(.34,1.56,.64,1) both}
+  @keyframes drop{0%{transform:translateY(-46px);opacity:0}60%{opacity:1}100%{transform:translateY(0);opacity:1}}
+  .hero .sl{font-size:10px;letter-spacing:4px;color:rgba(255,255,255,.6);font-weight:600;animation:fadein 1s .5s both}
+  @keyframes fadein{from{opacity:0}to{opacity:1}}
+
+  .tut{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);padding:0 24px;gap:0}
+  .tut .kk{font-size:10px;font-weight:800;letter-spacing:2.5px;color:var(--accent)}
+  .tut .scene{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:16px;margin:16px 0 18px;padding:10px 11px;position:relative;overflow:hidden}
+  .tut .scene .row2{display:flex;align-items:center;gap:9px}
+  .tut .ttl{font-size:20px;font-weight:800;letter-spacing:-.3px}
+  .tut .ln{font-size:10.5px;color:var(--ink2);text-align:center;line-height:1.8;margin-top:8px}
+  .tut .skip{position:absolute;bottom:52px;right:26px;font-size:10.5px;color:var(--ink3);font-weight:600}
+  .tut .dots{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);display:flex;gap:4px}
+  .tut .dots i{width:4px;height:4px;border-radius:99px;background:var(--ink3);opacity:.4}
+  .tut .dots i.on{width:18px;background:var(--ink);opacity:1}
+  .ball{position:absolute;width:12px;height:12px;border-radius:50%;background:var(--accent);top:38%;left:62%;animation:fly 2.2s cubic-bezier(.3,.7,.4,1) infinite}
+  @keyframes fly{0%,18%{transform:translate(0,0) scale(1);opacity:0}22%{opacity:1}55%{transform:translate(46px,-108px) scale(.45);opacity:1}56%{opacity:0}100%{opacity:0}}
+
+  .peak{flex:1;background:rgba(8,8,9,.86);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;backdrop-filter:blur(2px)}
+  .peak .ring{width:92px;height:92px;position:relative}
+  .peak svg{width:92px;height:92px}
+  .peak .c1{fill:none;stroke:#fff;stroke-width:3;stroke-dasharray:264;stroke-dashoffset:66;stroke-linecap:round;animation:draw 1.2s .2s ease-out both}
+  .peak .c2{fill:none;stroke:var(--accent);stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:60;stroke-dashoffset:60;animation:draw .6s .9s ease-out both}
+  @keyframes draw{to{stroke-dashoffset:0}}
+  .peak .big{font-size:19px;font-weight:800;color:#fff;letter-spacing:-.3px}
+  .peak .ln1{font-size:11px;color:rgba(255,255,255,.85);font-weight:600}
+  .peak .ln1 b{color:var(--accent-soft)}
+  .peak .st{font-size:10px;color:rgba(255,255,255,.6);font-weight:600;background:rgba(255,255,255,.1);padding:4px 12px;border-radius:999px}
+  .peak .st b{color:#fff}
+
+  .coach{position:absolute;inset:0;background:rgba(10,10,11,.45);z-index:5}
+  .coach .bub{position:absolute;left:14px;top:196px;width:216px;background:#fff;border-radius:14px;padding:11px 13px;box-shadow:0 10px 26px rgba(0,0,0,.25)}
+  .coach .bub .bt{font-size:11.5px;font-weight:800}
+  .coach .bub .bm{font-size:10px;color:var(--ink2);margin-top:4px;line-height:1.6}
+  .coach .bub .bk{display:inline-block;margin-top:8px;font-size:10px;font-weight:800;color:var(--accent)}
+  .coach .ar{position:absolute;left:238px;top:180px;width:0;height:0;border:9px solid transparent;border-bottom-color:#fff;transform:rotate(-38deg)}
+
+  .mapdark{flex:1;background:var(--dark);padding:2px 14px;display:flex;flex-direction:column;gap:9px}
+  .mapcard{height:168px;border-radius:18px;background:linear-gradient(180deg,#1E2430 0%,#171B24 100%);border:1px solid var(--border-dark);position:relative;overflow:hidden}
+  .mapcard .pin{position:absolute;left:50%;top:52px;transform:translateX(-50%);text-align:center;font-size:9px;color:#F4F4F5;font-weight:700}
+  .mapcard .pin .h{font-size:22px}
+  .mapcard .dot{position:absolute;left:50%;top:112px;transform:translateX(-50%);width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px rgba(255,90,38,.25)}
+  .mapcard .cap2{position:absolute;top:10px;left:10px;font-size:8.5px;color:rgba(255,255,255,.75);background:rgba(255,255,255,.1);padding:3px 8px;border-radius:999px;font-weight:600}
+  .placecard{background:rgba(255,255,255,.05);border:1px solid var(--border-dark);border-radius:16px;padding:11px 13px;color:#F4F4F5}
+  .placecard .r1{display:flex;justify-content:space-between;font-size:10px;font-weight:700}
+  .placecard .r1 .add{color:var(--accent-soft)}
+  .placecard .r2{display:flex;align-items:center;gap:9px;margin-top:9px}
+  .placecard .r2 .n{font-size:12.5px;font-weight:800}
+  .placecard .r2 .s{font-size:9.5px;color:#8B8B93;margin-top:2px}
+  .switch{width:34px;height:20px;border-radius:999px;background:var(--accent);position:relative;margin-left:auto}
+  .switch::after{content:"";position:absolute;right:2px;top:2px;width:16px;height:16px;border-radius:50%;background:#fff}
+
+  /* 会话详情/历史 */
+  .hrow{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid #F0F0F2}
+  .hrow:last-child{border-bottom:none}
+  .hrow .dt{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+  .hrow .dt.g{background:#34C759}
+  .badge2{font-size:9px;font-weight:800;color:var(--accent);background:rgba(255,90,38,.1);padding:3px 8px;border-radius:999px}
+  .badge2.g{color:#248A3D;background:rgba(52,199,89,.12)}
+</style>
+</head>
+<body>
+
+<h1>Gowith<span class="dot">.</span> 页面预览 · 一级 / 二级全量</h1>
+<div class="sub">本预览 = <b>信息与引导升级方案 + 价值体系</b>落地后的效果。全套使用同一套种子数据：<b>玉林的家 / 通勤包</b>，物品 6 件（门钥匙 ¥128 · 折叠雨伞 ¥89 · 充电宝 ¥199 · 无线耳机 ¥1,299 · 保温杯 ¥129 · 防晒霜 ¥79）＋ 背包 ¥459。当前：门钥匙 / 无线耳机 / 充电宝已装入，背包在「玉林的家」。橙底标签标注了本方案新增的部分。</div>
+
+<!-- ================= A. 一级 · 基础浅色 ================= -->
+<h2 class="section">A · 一级页面（基础模式 · 浅色）<small>价值数据已上浮到资产卡</small></h2>
+<div class="grid">
+
+  <!-- A1 物品库 -->
+  <div class="item"><div class="phone"><div class="notch"></div><div class="statusbar"><span>9:41</span><span>🛜 🔋</span></div>
+    <div class="screen">
+      <div class="apphead"><div class="brand">Gowith<i>.</i></div><div class="mode"><span class="on">基础</span><span>进阶</span></div></div>
+      <div class="content">
+        <div class="asset">
+          <div class="asset-top"><span>物品库 · INVENTORY</span><span class="bdg">总价值 ¥1,923</span></div>
+          <div class="asset-mid">
+            <div class="cell"><div class="row"><span class="num">6</span><span class="un">件</span></div><div class="lb">物品库总数</div></div>
+            <div class="vline"></div>
+            <div class="cell right"><div class="row"><span class="num sm">3</span><span class="un">件</span></div><div class="lb">已装入背包</div></div>
+          </div>
+          <div class="dist">随身 <b>¥1,626</b> · 在家 <b>¥297</b> · 在外 <b>¥0</b></div>
+          <div class="asset-cta">点 <b>+</b> 添加物品 · 装包</div>
+        </div>
+        <div class="chips"><span class="chip on">▦ 全部</span><span class="chip">随身数码</span><span class="chip">衣物雨具</span><span class="chip">饮食容器</span><span class="chip add">＋</span></div>
+        <div class="card rows">
+          <div class="row"><div class="thumb packed">🔑</div><div class="meta"><div class="n">门钥匙</div><div class="s acc">已装入背包 · <span class="price">¥128</span></div></div><div class="pbtn x">＋</div></div>
+          <div class="row"><div class="thumb packed">🎧</div><div class="meta"><div class="n">无线耳机</div><div class="s acc">已装入背包 · <span class="price">¥1,299</span></div></div><div class="pbtn x">＋</div></div>
+          <div class="row"><div class="thumb packed">🔋</div><div class="meta"><div class="n">充电宝</div><div class="s acc">已装入背包 · <span class="price">¥199</span></div></div><div class="pbtn x">＋</div></div>
+          <div class="row"><div class="thumb">☂️</div><div class="meta"><div class="n">折叠雨伞</div><div class="s">在「玉林的家」 · <span class="price">¥89</span></div></div><div class="pbtn">＋</div></div>
+        </div>
+      </div>
+      <div class="bottom">
+        <div class="tabwrap">
+          <div class="tabbar">
+            <div class="tab on"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg></div>
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><path d="M7 8V6a5 5 0 0110 0v2h1a2 2 0 012 2v9a3 3 0 01-3 3H7a3 3 0 01-3-3v-9a2 2 0 012-2h1zm2 0h6V6a3 3 0 00-6 0v2z"/></svg><span class="bd">3</span></div>
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><circle cx="8" cy="12" r="4.5"/><path d="M8 10l1.6 1.6L13 8.5" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/><rect x="14" y="8" width="7" height="2" rx="1"/><rect x="14" y="14" width="7" height="2" rx="1"/></svg><span class="bd">1</span></div>
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5z"/></svg></div>
+          </div>
+          <div class="fab"><span class="v">+</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="cap">物品库<small>主任务：添加物品 · 看清家底 ｜ <span style="color:var(--accent)">新增：总价值 badge + 随身/在家/在外分布 + 行级价格</span></small></div></div>
+
+  <!-- A2 拿东西 -->
+  <div class="item"><div class="phone"><div class="notch"></div><div class="statusbar"><span>9:41</span><span>🛜 🔋</span></div>
+    <div class="screen">
+      <div class="apphead"><div class="brand">Gowith<i>.</i></div><div class="mode"><span class="on">基础</span><span>进阶</span></div></div>
+      <div class="content">
+        <div class="asset">
+          <div class="asset-top"><span>拿东西 · PACKING</span><span class="bdg">通勤包 ›</span></div>
+          <div class="asset-mid">
+            <div class="cell"><div class="row"><span class="num">3</span><span class="un">件</span></div><div class="lb">已装入</div></div>
+            <div class="vline"></div>
+            <div class="cell right"><div class="row"><span class="num sm">3</span><span class="un">件</span></div><div class="lb">货架剩余</div></div>
+          </div>
+          <div class="dist">本次携带约 <b>¥1,626</b></div>
+          <div class="asset-cta">核对完成，点底部 <b>开始出行</b></div>
+        </div>
+        <div class="card rows">
+          <div class="row" style="border-bottom:1px solid #F0F0F2"><div class="thumb packed">🔑</div><div class="meta"><div class="n">门钥匙</div><div class="s acc">已装入</div></div><div class="pbtn ck" style="border-radius:50%">✓</div></div>
+          <div class="row"><div class="thumb packed">🎧</div><div class="meta"><div class="n">无线耳机</div><div class="s acc">已装入</div></div><div class="pbtn ck" style="border-radius:50%">✓</div></div>
+        </div>
+        <div class="card rows">
+          <div class="row" style="border-bottom:1px solid #F0F0F2"><div class="thumb">🔋</div><div class="meta"><div class="n">充电宝</div><div class="s">在「玉林的家」 · <span class="price">¥199</span></div></div><div class="pbtn">＋</div></div>
+          <div class="row"><div class="thumb">☂️</div><div class="meta"><div class="n">折叠雨伞</div><div class="s">在「玉林的家」 · <span class="price">¥89</span></div></div><div class="pbtn">＋</div></div>
+        </div>
+        <div class="note-card"><div class="t"><span class="ic">➤</span>上次出门 · 9月24日</div>
+          <li>充电宝 · 门钥匙 · 无线耳机</li>
+          <li style="color:var(--ink);font-weight:700">↻ 一键复装（3 件）</li>
+        </div>
+      </div>
+      <div class="bottom">
+        <div class="mainbtn">开始出行（3 件）</div>
+        <div class="tabwrap">
+          <div class="tabbar">
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg></div>
+            <div class="tab on"><svg class="ic" viewBox="0 0 24 24"><path d="M7 8V6a5 5 0 0110 0v2h1a2 2 0 012 2v9a3 3 0 01-3 3H7a3 3 0 01-3-3v-9a2 2 0 012-2h1zm2 0h6V6a3 3 0 00-6 0v2z"/></svg><span class="bd">3</span></div>
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><circle cx="8" cy="12" r="4.5"/><path d="M8 10l1.6 1.6L13 8.5" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/><rect x="14" y="8" width="7" height="2" rx="1"/><rect x="14" y="14" width="7" height="2" rx="1"/></svg><span class="bd">1</span></div>
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5z"/></svg></div>
+          </div>
+          <div class="fab"><span class="v">+</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="cap">拿东西<small>主任务：核对清单 · 带价值出门 ｜ <span style="color:var(--accent)">新增：本次携带约 ¥1,626 + 上次出门一键复装</span></small></div></div>
+
+  <!-- A3 检查 -->
+  <div class="item"><div class="phone"><div class="notch"></div><div class="statusbar"><span>9:41</span><span>🛜 🔋</span></div>
+    <div class="screen">
+      <div class="apphead"><div class="brand">Gowith<i>.</i></div><div class="mode"><span class="on">基础</span><span>进阶</span></div></div>
+      <div class="content">
+        <div class="asset">
+          <div class="asset-top"><span>检查 · CHECK-IN</span><span class="bdg">回家清点</span></div>
+          <div class="asset-mid">
+            <div class="cell"><div class="row"><span class="num">1</span><span class="un">件</span></div><div class="lb">已带回</div></div>
+            <div class="vline"></div>
+            <div class="cell right"><div class="row"><span class="num sm">1</span><span class="un">件</span></div><div class="lb">待确认</div></div>
+          </div>
+          <div class="dist">待确认价值 <b>¥89</b> · 找不到可 3 天内补登</div>
+          <div class="asset-cta">勾完点底部 <b>完成清点</b></div>
+        </div>
+        <div class="card rows">
+          <div class="row" style="border-bottom:1px solid #F0F0F2"><div class="thumb">🔑</div><div class="meta"><div class="n">门钥匙</div><div class="s">出门清单 · <span class="price">¥128</span></div></div><div class="pbtn ck">✓</div></div>
+          <div class="row"><div class="thumb">☂️</div><div class="meta"><div class="n">折叠雨伞</div><div class="s">出门清单 · <span class="price">¥89</span></div></div><div class="pbtn dis">✓</div></div>
+        </div>
+        <div class="note-card"><div class="t"><span class="ic">💡</span>清点小贴士</div>
+          <li>「折叠雨伞」最后记录在「玉林的家」。</li>
+          <li>待确认价值 ¥89，3 天内未确认将自动标记为遗失。</li>
+        </div>
+      </div>
+      <div class="bottom">
+        <div class="mainbtn">完成清点（1/2）</div>
+        <div class="tabwrap">
+          <div class="tabbar">
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg></div>
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><path d="M7 8V6a5 5 0 0110 0v2h1a2 2 0 012 2v9a3 3 0 01-3 3H7a3 3 0 01-3-3v-9a2 2 0 012-2h1zm2 0h6V6a3 3 0 00-6 0v2z"/></svg></div>
+            <div class="tab on"><svg class="ic" viewBox="0 0 24 24"><circle cx="8" cy="12" r="4.5"/><path d="M8 10l1.6 1.6L13 8.5" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/><rect x="14" y="8" width="7" height="2" rx="1"/><rect x="14" y="14" width="7" height="2" rx="1"/></svg><span class="bd">1</span></div>
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5z"/></svg></div>
+          </div>
+          <div class="fab"><span class="v">+</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="cap">检查（回家清点）<small>主任务：逐项对账 ｜ <span style="color:var(--accent)">新增：待确认价值 ¥89（损失厌恶放大清点认真度）</span></small></div></div>
+
+  <!-- A4 我的 -->
+  <div class="item"><div class="phone"><div class="notch"></div><div class="statusbar"><span>9:41</span><span>🛜 🔋</span></div>
+    <div class="screen">
+      <div class="apphead"><div class="brand">Gowith<i>.</i></div><div class="mode"><span class="on">基础</span><span>进阶</span></div></div>
+      <div class="content">
+        <div class="asset">
+          <div class="asset-top"><span>我的 · ME</span><span class="bdg">随身资产</span></div>
+          <div class="asset-mid">
+            <div class="cell"><div class="row"><span class="num sm">¥2,382</span></div><div class="lb">家当总值（含背包）</div></div>
+            <div class="vline"></div>
+            <div class="cell right"><div class="row"><span class="num sm" style="color:#fff">7</span><span class="un">天</span></div><div class="lb">连续零遗失</div></div>
+          </div>
+          <div class="dist">6 件物品 · 1 个背包 · 完成 <b>3</b> 次清点</div>
+          <div class="asset-cta">最贵单品：<b>无线耳机 ¥1,299</b></div>
+        </div>
+        <div class="note-card" style="background:var(--accent);border-color:var(--accent)">
+          <div class="t" style="color:#fff"><span class="ic" style="color:#fff">⏱</span>1 件物品待确认</div>
+          <li style="color:rgba(255,255,255,.9)">3 天内未确认将自动标记为遗失 ›</li>
+        </div>
+        <div class="card rows">
+          <div class="row"><div class="meta" style="padding-left:2px"><div class="n" style="font-size:12px">外观</div></div><div class="s" style="font-size:10px;color:var(--ink2)">基础</div></div>
+          <div class="row"><div class="meta" style="padding-left:2px"><div class="n" style="font-size:12px">出门 / 回家提醒</div></div><div class="switch"></div></div>
+          <div class="row"><div class="meta" style="padding-left:2px"><div class="n" style="font-size:12px">触感反馈</div></div><div class="switch"></div></div>
+          <div class="row"><div class="meta" style="padding-left:2px"><div class="n" style="font-size:12px">历史记录</div></div><div class="s" style="font-size:10px;color:var(--ink2)">3 次 ›</div></div>
+          <div class="row"><div class="meta" style="padding-left:2px"><div class="n" style="font-size:12px">关于 Gowith</div></div><div class="s" style="font-size:10px;color:var(--ink2)">v1.1.1</div></div>
+        </div>
+      </div>
+      <div class="bottom">
+        <div class="tabwrap">
+          <div class="tabbar">
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg></div>
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><path d="M7 8V6a5 5 0 0110 0v2h1a2 2 0 012 2v9a3 3 0 01-3 3H7a3 3 0 01-3-3v-9a2 2 0 012-2h1zm2 0h6V6a3 3 0 00-6 0v2z"/></svg></div>
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><circle cx="8" cy="12" r="4.5"/><path d="M8 10l1.6 1.6L13 8.5" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/><rect x="14" y="8" width="7" height="2" rx="1"/><rect x="14" y="14" width="7" height="2" rx="1"/></svg><span class="bd">1</span></div>
+            <div class="tab on"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5z"/></svg></div>
+          </div>
+          <div class="fab"><span class="v">+</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="cap">我的<small>主任务：资产沉淀 ｜ <span style="color:var(--accent)">新增：随身资产总卡（总值/零遗失 streak/最贵单品）</span></small></div></div>
+</div>
+
+<!-- ================= B. 一级 · 进阶深色 ================= -->
+<h2 class="section">B · 一级页面（进阶模式 · 深色）<small>胶囊切到「进阶」后全局翻转，多出地图 Tab</small></h2>
+<div class="grid">
+
+  <!-- B1 深色物品库 -->
+  <div class="item"><div class="phone dark"><div class="notch"></div><div class="statusbar"><span>21:54</span><span>🛜 🔋</span></div>
+    <div class="screen">
+      <div class="apphead"><div class="brand">Gowith<i>.</i></div><div class="mode"><span>基础</span><span class="on">进阶</span></div></div>
+      <div class="content">
+        <div class="asset darkvar">
+          <div class="asset-top"><span>物品库 · INVENTORY</span><span class="bdg">总价值 ¥1,923</span></div>
+          <div class="asset-mid">
+            <div class="cell"><div class="row"><span class="num">6</span><span class="un">件</span></div><div class="lb">物品库总数</div></div>
+            <div class="vline"></div>
+            <div class="cell right"><div class="row"><span class="num sm">3</span><span class="un">件</span></div><div class="lb">已装入背包</div></div>
+          </div>
+          <div class="dist">随身 <b>¥1,626</b> · 在家 <b>¥297</b> · 在外 <b>¥0</b></div>
+          <div class="asset-cta">点 <b>+</b> 添加物品 · 装包</div>
+        </div>
+        <div class="chips"><span class="chip on">▦ 全部</span><span class="chip">随身数码</span><span class="chip">衣物雨具</span><span class="chip add">＋</span></div>
+        <div class="card rows">
+          <div class="row"><div class="thumb packed">🔑</div><div class="meta"><div class="n">门钥匙</div><div class="s acc">已装入背包 · <span class="price">¥128</span></div></div><div class="pbtn x">＋</div></div>
+          <div class="row"><div class="thumb packed">🎧</div><div class="meta"><div class="n">无线耳机</div><div class="s acc">已装入背包 · <span class="price">¥1,299</span></div></div><div class="pbtn x">＋</div></div>
+          <div class="row"><div class="thumb">☂️</div><div class="meta"><div class="n">折叠雨伞</div><div class="s">在「玉林的家」 · <span class="price">¥89</span></div></div><div class="pbtn">＋</div></div>
+        </div>
+      </div>
+      <div class="bottom">
+        <div class="tabwrap">
+          <div class="tabbar">
+            <div class="tab on"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg></div>
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><path d="M7 8V6a5 5 0 0110 0v2h1a2 2 0 012 2v9a3 3 0 01-3 3H7a3 3 0 01-3-3v-9a2 2 0 012-2h1zm2 0h6V6a3 3 0 00-6 0v2z"/></svg><span class="bd">3</span></div>
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><circle cx="8" cy="12" r="4.5"/><path d="M8 10l1.6 1.6L13 8.5" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/><rect x="14" y="8" width="7" height="2" rx="1"/><rect x="14" y="14" width="7" height="2" rx="1"/></svg><span class="bd">1</span></div>
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><path d="M9 3L3 5.5v15L9 18l6 2.5 6-2.5v-15L15 5.5 9 3zm0 2.2l6 2.5v11.8l-6-2.5V5.2z"/></svg></div>
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5z"/></svg></div>
+          </div>
+          <div class="fab"><span class="v">+</span></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  <div class="cap">物品库 · 深色<small>进阶模式全局翻转；历史页从「我的」进入</small></div>
+
+  <!-- B2 深色地图 -->
+  <div class="item"><div class="phone dark"><div class="notch"></div><div class="statusbar"><span>21:54</span><span>🛜 🔋</span></div>
+    <div class="screen">
+      <div class="apphead"><div class="brand">Gowith<i>.</i></div><div class="mode"><span>基础</span><span class="on">进阶</span></div></div>
+      <div class="mapdark">
+        <div class="mapcard">
+          <div class="cap2">当前位置 · 50m 围栏已启用</div>
+          <div class="pin"><div class="h">🏠</div>玉林的家</div>
+          <div class="dot"></div>
+        </div>
+        <div class="placecard">
+          <div class="r1"><span>已保存地点 · 1 个</span><span class="add">＋ 添加地点</span></div>
+          <div class="r2">
+            <div class="thumb" style="background:rgba(255,255,255,.08)">🏠</div>
+            <div class="meta"><div class="n">玉林的家</div><div class="s">物品 2 · 背包 1 · 围栏 50m · <span style="color:var(--accent-soft)">在此 ¥297</span></div></div>
+            <span style="color:#555">›</span>
+          </div>
+        </div>
+        <div class="placecard">
+          <div class="r1"><span style="color:#8B8B93;font-size:9.5px;letter-spacing:1px">围栏提醒</span></div>
+          <div class="r2" style="margin-top:4px"><div class="meta"><div class="n" style="font-size:12px">进入地点时提醒</div><div class="s">进入地点约 50 米范围时发送本地通知</div></div><div class="switch"></div></div>
+          <div class="r2" style="border-top:1px solid var(--border-dark);padding-top:10px"><div class="meta"><div class="n" style="font-size:12px">离开地点时记录</div><div class="s">离开出发地围栏后开始监测其他地点</div></div><div class="switch"></div></div>
+        </div>
+      </div>
+      <div class="bottom">
+        <div class="tabwrap">
+          <div class="tabbar">
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg></div>
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><path d="M7 8V6a5 5 0 0110 0v2h1a2 2 0 012 2v9a3 3 0 01-3 3H7a3 3 0 01-3-3v-9a2 2 0 012-2h1zm2 0h6V6a3 3 0 00-6 0v2z"/></svg></div>
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><circle cx="8" cy="12" r="4.5"/><path d="M8 10l1.6 1.6L13 8.5" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/><rect x="14" y="8" width="7" height="2" rx="1"/><rect x="14" y="14" width="7" height="2" rx="1"/></svg><span class="bd">1</span></div>
+            <div class="tab on"><svg class="ic" viewBox="0 0 24 24"><path d="M9 3L3 5.5v15L9 18l6 2.5 6-2.5v-15L15 5.5 9 3zm0 2.2l6 2.5v11.8l-6-2.5V5.2z"/></svg></div>
+            <div class="tab"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5z"/></svg></div>
+          </div>
+          <div class="fab"><span class="v">+</span></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  <div class="cap">地图 · 深色<small>进阶专属 ｜ <span style="color:var(--accent)">新增：地点卡显示「在此 ¥297」（空间×价值交叉）</span></small></div>
+</div>
+
+<!-- ================= C. 二级页面 ================= -->
+<h2 class="section">C · 二级页面（Sheet）<small>价值体系在编辑器里的入口与收纳位</small></h2>
+<div class="grid">
+
+  <!-- C1 编辑物品 -->
+  <div class="item"><div class="phone"><div class="notch"></div><div class="statusbar"><span>9:41</span><span>🛜 🔋</span></div>
+    <div class="screen">
+      <div class="dimtop"></div>
+      <div class="sheet">
+        <div class="nav"><span class="c">取消</span><span class="t">编辑物品</span><span class="sv">保存</span></div>
+        <div class="statbar">
+          <div class="sc"><div class="v">120 天</div><div class="k">持有</div></div>
+          <div class="sc"><div class="v">18 次</div><div class="k">携带</div></div>
+          <div class="sc"><div class="v">¥0.7</div><div class="k">日均</div></div>
+          <div class="sc"><div class="v acc">¥4.9</div><div class="k">单次使用</div></div>
+        </div>
+        <div>
+          <div class="f-label">名称</div>
+          <div class="f-input" style="margin-top:5px">折叠雨伞</div>
+        </div>
+        <div>
+          <div class="f-label">价格（可选）</div>
+          <div class="f-input" style="margin-top:5px"><span>¥ 89</span><span class="ph">买入日期 2026-05-28 ›</span></div>
+        </div>
+        <div>
+          <div class="f-label">图标库 · 109 枚</div>
+          <div class="f-input" style="margin-top:5px;padding:7px 11px"><span class="ph">搜索：背包、钥匙、充电、雨伞…</span></div>
+          <div class="icogrid" style="margin-top:7px">
+            <div class="g">🎒<span>双肩背包</span></div>
+            <div class="g">🧳<span>行李箱</span></div>
+            <div class="g on">☂️<span>雨伞</span></div>
+            <div class="g">🔑<span>钥匙</span></div>
+            <div class="g">📷<span>相机</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="cap">编辑物品<small>｜ <span style="color:var(--accent)">新增：顶部统计条（持有/携带/日均/单次）+ 价格字段（可选）</span>｜ 低频数据收纳位固定</small></div></div>
+
+  <!-- C2 添加背包 -->
+  <div class="item"><div class="phone"><div class="notch"></div><div class="statusbar"><span>9:41</span><span>🛜 🔋</span></div>
+    <div class="screen">
+      <div class="dimtop"></div>
+      <div class="sheet">
+        <div class="nav"><span class="c">取消</span><span class="t">新建背包</span><span class="sv">保存</span></div>
+        <div>
+          <div class="f-label">背包名称</div>
+          <div class="f-input" style="margin-top:5px"><span>旅行背包</span></div>
+        </div>
+        <div>
+          <div class="f-label">价格（可选）</div>
+          <div class="f-input" style="margin-top:5px"><span>¥ 459</span></div>
+        </div>
+        <div>
+          <div class="f-label">图标库 · 包袋箱包 15 枚</div>
+          <div class="icogrid" style="margin-top:7px">
+            <div class="g on">🎒<span>双肩背包</span></div>
+            <div class="g">🧳<span>行李箱</span></div>
+            <div class="g">👜<span>手提包</span></div>
+            <div class="g">🛍<span>购物袋</span></div>
+            <div class="g">💼<span>公文包</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="cap">新建背包<small>｜ <span style="color:var(--accent)">背包同样可录入价值，计入家当总值</span></small></div></div>
+
+  <!-- C3 添加地点 -->
+  <div class="item"><div class="phone"><div class="notch"></div><div class="statusbar"><span>9:41</span><span>🛜 🔋</span></div>
+    <div class="screen">
+      <div class="dimtop"></div>
+      <div class="sheet">
+        <div class="nav"><span class="c">取消</span><span class="t">添加地点</span><span class="sv">保存</span></div>
+        <div>
+          <div class="f-label">地点名称</div>
+          <div class="f-input" style="margin-top:5px"><span class="ph">例如：公司、健身房</span></div>
+        </div>
+        <div class="f-label" style="margin-bottom:5px">位置（使用当前位置，或在地图点选）</div>
+        <div style="height:92px;border-radius:14px;background:linear-gradient(180deg,#DDE5EE 0%,#CBD6E4 100%);position:relative;overflow:hidden;border:1px solid var(--border)">
+          <div style="position:absolute;left:50%;top:38%;transform:translateX(-50%);text-align:center;font-size:8px;font-weight:700;color:#111">📍<div>家的位置</div></div>
+          <div style="position:absolute;left:50%;top:38%;transform:translateX(-50%);width:56px;height:56px;border:1.5px solid var(--accent);border-radius:50%;background:rgba(255,90,38,.14)"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="cap">添加地点<small>信息简单、操作简单（现状保持）</small></div></div>
+
+  <!-- C4 选择背包 -->
+  <div class="item"><div class="phone"><div class="notch"></div><div class="statusbar"><span>9:41</span><span>🛜 🔋</span></div>
+    <div class="screen">
+      <div class="dimtop"></div>
+      <div class="sheet">
+        <div class="nav"><span class="c">取消</span><span class="t">选择背包</span><span class="sv">完成</span></div>
+        <div class="card rows">
+          <div class="row" style="border-bottom:1px solid #F0F0F2"><div class="thumb packed">🎒</div><div class="meta"><div class="n">通勤包 <span class="badge2" style="margin-left:4px">当前</span></div><div class="s">已装 3 件 · 价值 ¥1,626</div></div><div style="color:var(--ink);font-weight:800">✓</div></div>
+          <div class="row"><div class="thumb">🧳</div><div class="meta"><div class="n">旅行箱</div><div class="s">已装 0 件 · 价值 ¥0</div></div></div>
+        </div>
+        <div style="border:1.5px dashed var(--ink3);border-radius:14px;text-align:center;padding:11px;font-size:11px;font-weight:700;color:var(--ink2)">＋ 新建背包</div>
+      </div>
+    </div>
+  </div>
+  <div class="cap">选择背包<small>｜ <span style="color:var(--accent)">新增：背包行显示已装价值</span></small></div></div>
+
+  <!-- C5 历史记录 -->
+  <div class="item"><div class="phone"><div class="notch"></div><div class="statusbar"><span>9:41</span><span>🛜 🔋</span></div>
+    <div class="screen">
+      <div class="dimtop" style="flex:.6"></div>
+      <div class="sheet" style="flex:3">
+        <div class="nav"><span class="t" style="margin:0 auto">历史</span><span class="sv">完成</span></div>
+        <div class="asset darkvar" style="padding:11px 14px">
+          <div class="asset-top"><span>历史 · HISTORY</span><span class="bdg">本月</span></div>
+          <div class="asset-mid">
+            <div class="cell"><div class="row"><span class="num sm">3</span><span class="un">次</span></div><div class="lb">完成清点</div></div>
+            <div class="vline"></div>
+            <div class="cell right"><div class="row"><span class="num sm">0</span><span class="un">件</span></div><div class="lb">遗失物品</div></div>
+          </div>
+        </div>
+        <div class="card rows">
+          <div class="hrow"><div class="dt"></div><div class="meta"><div class="n">通勤包 · 2 件</div><div class="s">9月25日 21:35</div></div><span class="badge2">待确认</span><span style="color:var(--ink3)">›</span></div>
+          <div class="hrow"><div class="dt g"></div><div class="meta"><div class="n">通勤包 · 3 件</div><div class="s">9月24日 08:12</div></div><span class="badge2 g">完成</span><span style="color:var(--ink3)">›</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="cap">历史记录<small>状态圆点：橙=待确认，绿=完成（现状保持）</small></div></div>
+
+  <!-- C6 会话详情 -->
+  <div class="item"><div class="phone"><div class="notch"></div><div class="statusbar"><span>9:41</span><span>🛜 🔋</span></div>
+    <div class="screen">
+      <div class="dimtop" style="flex:.6"></div>
+      <div class="sheet" style="flex:3">
+        <div class="nav"><span class="t" style="margin:0 auto">清点详情</span><span class="sv">完成</span></div>
+        <div class="card" style="padding:11px 13px">
+          <div style="font-size:12px;font-weight:800">9月25日 21:35</div>
+          <div style="font-size:10px;color:var(--ink2);margin-top:3px">通勤包 · 从「玉林的家」出发 · 携带价值 ¥1,626</div>
+        </div>
+        <div class="card rows">
+          <div class="row" style="border-bottom:1px solid #F0F0F2"><div class="thumb">🔑</div><div class="meta"><div class="n">门钥匙</div><div class="s price">¥128</div></div><span class="badge2 g">已带回</span></div>
+          <div class="row"><div class="thumb">☂️</div><div class="meta"><div class="n">折叠雨伞</div><div class="s price">¥89</div></div><span class="badge2">待确认 ▾</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="cap">会话详情<small>｜ <span style="color:var(--accent)">新增：携带价值 + 行级价格；待确认可补登</span></small></div></div>
+</div>
+
+<!-- ================= D. 状态与引导 ================= -->
+<h2 class="section">D · 关键状态与引导<span class="dot">·</span><small>出行锁定 / 峰值时刻 / 教学动画 / 开屏 / CoachMark</small></h2>
+<div class="grid">
+
+  <!-- D1 出行中锁定 -->
+  <div class="item"><div class="phone"><div class="notch"></div><div class="statusbar"><span>9:41</span><span>🛜 🔋</span></div>
+    <div class="screen">
+      <div class="apphead"><div class="brand">Gowith<i>.</i></div><div class="mode"><span class="on">基础</span><span>进阶</span></div></div>
+      <div class="content">
+        <div class="asset">
+          <div class="asset-top"><span>出行中 · AWAY</span><span class="bdg">从「玉林的家」出发</span></div>
+          <div class="asset-mid">
+            <div class="cell"><div class="row"><span class="num">2</span><span class="un">件</span></div><div class="lb">携带中</div></div>
+            <div class="vline"></div>
+            <div class="cell right"><div class="row"><span class="num sm">1</span><span class="un">分钟</span></div><div class="lb">已出门</div></div>
+          </div>
+          <div class="dist">本次携带 <b>¥1,626</b> 的家当</div>
+        </div>
+        <div class="card rows">
+          <div style="display:flex;align-items:center;gap:6px;padding:8px 4px 6px;font-size:10px;font-weight:800"><span style="width:6px;height:6px;border-radius:50%;background:var(--accent)"></span>出行中 · 清单已锁定<span style="margin-left:auto;color:var(--ink3);font-weight:600">通勤包 · 只读</span></div>
+          <div class="row" style="border-bottom:1px solid #F0F0F2"><div class="thumb">🔑</div><div class="meta"><div class="n">门钥匙</div></div><div class="s acc" style="font-size:9.5px;font-weight:600">携带中</div><div class="pbtn ck">✓</div></div>
+          <div class="row"><div class="thumb">🎧</div><div class="meta"><div class="n">无线耳机</div></div><div class="s acc" style="font-size:9.5px;font-weight:600">携带中</div><div class="pbtn ck">✓</div></div>
+        </div>
+        <div class="locknote"><span class="lk">🔒</span><span><b>本次清单已锁定</b>，装包与编辑将在出行完成后恢复。</span></div>
+      </div>
+      <div class="bottom">
+        <div class="mainbtn dis">到达后自动提醒清点</div>
+        <div class="tabwrap"><div class="tabbar"></div><div class="fab"><span class="v">+</span></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="cap">出行中（away）<small>｜ <span style="color:var(--accent)">新增：资产卡「本次携带 ¥1,626 的家当」</span></small></div></div>
+
+  <!-- D2 峰值时刻 -->
+  <div class="item"><div class="phone"><div class="notch"></div><div class="statusbar"><span>9:41</span><span>🛜 🔋</span></div>
+    <div class="screen" style="background:#1a1a1c">
+      <div class="apphead"><div class="brand" style="opacity:.25">Gowith<i>.</i></div><div class="mode" style="opacity:.25"><span class="on">基础</span><span>进阶</span></div></div>
+      <div class="peak">
+        <div class="ring">
+          <svg viewBox="0 0 100 100"><circle class="c1" cx="50" cy="50" r="42"/><path class="c2" d="M32 51l13 13 24-26"/></svg>
+        </div>
+        <div class="big">2 / 2 全部带回</div>
+        <div class="ln1">本次携带 <b>¥1,626</b> 的家当，一件不少</div>
+        <div class="st">🔥 连续零遗失 <b>7</b> 天</div>
+      </div>
+      <div class="bottom"><div class="tabwrap" style="opacity:.25"><div class="tabbar"></div><div class="fab"><span class="v">+</span></div></div></div>
+    </div>
+  </div>
+  <div class="cap">峰值时刻（爽感 2.1）<small>全带回时 1.5s 仪式画面：✓ 描边生长 + 价值 + streak（有待确认项不触发）</small></div></div>
+
+  <!-- D3 教学帧 -->
+  <div class="item"><div class="phone"><div class="notch"></div><div class="statusbar"><span>9:41</span><span>🛜 🔋</span></div>
+    <div class="screen">
+      <div class="tut">
+        <div class="kk">02 / 装包</div>
+        <div class="scene">
+          <div class="row2">
+            <div class="thumb">🔑</div>
+            <div class="meta"><div class="n" style="font-size:12px">门钥匙</div><div class="s acc">已装入</div></div>
+            <div class="pbtn" style="width:24px;height:24px;font-size:13px">✓</div>
+          </div>
+          <div class="ball"></div>
+        </div>
+        <div class="ttl">装进背包</div>
+        <div class="ln">放 → 装 → 勾，三步就学会。<br>装入后角标实时计数，随时可以出发。</div>
+      </div>
+      <div class="tut" style="justify-content:flex-end;padding-bottom:22px;flex:0 0 120px;gap:0">
+        <div class="dots"><i></i><i class="on"></i><i></i></div>
+      </div>
+      <div class="skip">跳过 ›</div>
+    </div>
+  </div>
+  <div class="cap">教学动画 · 第 2 帧（重做）<small>静态 emoji → 真实组件微缩循环动画（飞球每 2.2s 一趟）；标题动词化：放→装→勾</small></div></div>
+
+  <!-- D4 开屏 Hero -->
+  <div class="item"><div class="phone" style="background:#0B0B0C"><div class="notch"></div><div class="statusbar" style="color:#F4F4F5"><span>9:41</span><span>🛜 🔋</span></div>
+    <div class="screen" style="background:#0B0B0C">
+      <div class="hero">
+        <div class="wm">Gowith<i>.</i></div>
+        <div class="sl">带上要带的 · 记住带回的</div>
+      </div>
+    </div>
+  </div></div>
+  <div class="cap">冷启动品牌帧（Hero）<small>≤0.9s：橙点落下弹跳 + slogan 淡入；点击跳过；热启动不显示</small></div>
+
+  <!-- D5 CoachMark -->
+  <div class="item"><div class="phone"><div class="notch"></div><div class="statusbar"><span>9:41</span><span>🛜 🔋</span></div>
+    <div class="screen">
+      <div class="apphead"><div class="brand">Gowith<i>.</i></div><div class="mode"><span class="on">基础</span><span>进阶</span></div></div>
+      <div class="content" style="filter:blur(.4px)">
+        <div class="card rows">
+          <div class="row"><div class="thumb">🔑</div><div class="meta"><div class="n">门钥匙</div><div class="s">在「玉林的家」</div></div><div class="pbtn">＋</div></div>
+          <div class="row"><div class="thumb">☂️</div><div class="meta"><div class="n">折叠雨伞</div><div class="s">在「玉林的家」</div></div><div class="pbtn">＋</div></div>
+        </div>
+      </div>
+      <div class="bottom"><div class="tabwrap"><div class="tabbar"></div><div class="fab"><span class="v">+</span></div></div></div>
+      <div class="coach">
+        <div class="ar"></div>
+        <div class="bub">
+          <div class="bt">点 + 把物品装进背包</div>
+          <div class="bm">装入后「拿东西」角标会实时计数，出行前在这里核对清单。</div>
+          <span class="bk">知道了</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="cap">实操引导 · CoachMark（C1）<small>气泡 + 箭头指向现场；完成动作即永久毕业；首批共 5 个触点</small></div></div>
+</div>
+
+<div class="sub" style="margin-top:40px">注：种子数据为演示口径（总价值 ¥1,923 不含背包，含背包 ¥2,382；携带次数/日均/单次成本在编辑器统计条展示）。深色帧仅展示物品库与地图，其余页面同一套令牌自动翻转。本文件为静态预览，动效以 CSS 循环示意（飞球 / 句点 / ✓ 描边），实现时以 Swift 原生动画为准。</div>
+
+</body>
+</html>
