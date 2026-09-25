@@ -201,6 +201,8 @@ enum GowithIconLibrary {
 struct GowithLibraryIcon: View {
     let entry: GowithIconEntry
     var size: CGFloat = 38
+    /// 深色底上转浅色，与 ItemThumbnail 的 isSymbolLight 对齐
+    var lightSymbol: Bool = false
 
     var body: some View {
         Group {
@@ -212,7 +214,7 @@ struct GowithLibraryIcon: View {
             } else {
                 Image(systemName: entry.symbol)
                     .font(.system(size: size * 0.46, weight: .medium))
-                    .foregroundStyle(GowithColor.ink)
+                    .foregroundStyle(lightSymbol ? GowithColor.onPrimary : GowithColor.ink)
             }
         }
         .frame(width: size, height: size)

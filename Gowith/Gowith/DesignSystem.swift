@@ -520,6 +520,12 @@ struct ShelfRow: View {
         .accessibilityLabel("\(item.name)，\(isPacked ? "已装入背包" : statusText)")
         .accessibilityHint(isEditable ? "双击\(isPacked ? "移出背包" : "装入背包")，长按编辑物品" : "到达地点范围内后才能操作")
         .accessibilityAddTraits(.isButton)
+        .accessibilityAction {
+            if isEditable { onTogglePack() }
+        }
+        .accessibilityAction(named: Text("编辑物品")) {
+            if isEditable { onEdit() }
+        }
     }
 
     private var statusText: String {
@@ -1120,7 +1126,7 @@ struct ItemThumbnail: View {
             } else if let image = LocalImageStore.cachedImage(fileName: fileName) {
                 Image(uiImage: image).resizable().scaledToFill()
             } else if let entry = GowithIconLibrary.entry(for: symbolName) {
-                GowithLibraryIcon(entry: entry, size: size * 0.82)
+                GowithLibraryIcon(entry: entry, size: size * 0.82, lightSymbol: isSymbolLight)
             } else if let option = Gowith3DIconOption.option(for: symbolName) {
                 Gowith3DIcon(option: option, size: size * 0.8)
             } else {
