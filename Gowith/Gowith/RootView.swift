@@ -375,6 +375,10 @@ struct RootView: View {
         locationService.stopMonitoring()
         GowithHaptics.success()
         store.save()
+        // 兜底：若当前未选择背包（如出行中重启过 App），恢复为本次会话的背包。
+        if store.selectedBackpackID == nil, let backpack = store.backpacks.first(where: { $0.id == session.backpackID }) {
+            store.selectBackpack(backpack)
+        }
         isReviewingArrival = false
         selectedTab = .library
     }

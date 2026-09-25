@@ -423,7 +423,10 @@ final class GowithStore: ObservableObject {
             }
         }
         selectedBackpackID = payload.selectedBackpackID
-        if !backpacksAtSelectedPlace.contains(where: { $0.id == selectedBackpackID }) {
+        if let active = sessions.first(where: { $0.status != .completed }), let backpackID = active.backpackID {
+            // 出行中的背包 placeID 为 nil，不在任何地点清单里；保持它为当前选择，避免重启后选择丢失。
+            selectedBackpackID = backpackID
+        } else if !backpacksAtSelectedPlace.contains(where: { $0.id == selectedBackpackID }) {
             selectedBackpackID = backpacksAtSelectedPlace.first?.id
         }
         save()
