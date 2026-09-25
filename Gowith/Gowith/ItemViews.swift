@@ -24,9 +24,9 @@ struct LibraryPage: View {
         return locationService.isInside(place)
     }
 
-    /// 只有「位于当前地点」或「已在背包」的物品可以在围栏内操作。
+    /// 只有「位于当前地点」或「已在背包」的物品可以在围栏内操作；出行会话进行中整库锁定（规格 5.2）。
     private func isManageable(_ item: GowithItem) -> Bool {
-        guard canManage else { return false }
+        guard canManage, store.activeSession == nil else { return false }
         return item.placeID == store.selectedPlaceID || store.selectedBackpack?.itemIDs.contains(item.id) == true
     }
 
@@ -135,6 +135,12 @@ struct LibraryPage: View {
     private var locationStatus: some View {
         if locationService.needsPermissionRecovery {
             GowithLocationRecoveryBanner()
+        } else if store.activeSession != nil {
+            NoteCard(
+                title: "出行进行中",
+                systemImage: "lock.fill",
+                lines: ["本次清单已锁定，装包与编辑将在出行完成后恢复。"]
+            )
         } else if let place = store.selectedPlace, !canManage {
             FenceGateNote(placeName: place.name)
         }

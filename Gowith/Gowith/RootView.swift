@@ -276,6 +276,8 @@ struct RootView: View {
     }
 
     private func handlePack(_ item: GowithItem) {
+        // 出行会话进行中清单已锁定：装包/移除会使背包与本次会话快照不一致（规格 5.2）。
+        guard store.activeSession == nil else { return }
         guard let backpack = store.selectedBackpack else { return }
         let willPack = !backpack.itemIDs.contains(item.id)
         store.toggleItem(item, in: backpack)

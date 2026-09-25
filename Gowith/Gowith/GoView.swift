@@ -22,6 +22,11 @@ struct PackingPage: View {
         return locationService.isInside(place)
     }
 
+    /// 装包/移除需要围栏内且没有进行中的会话（checking 阶段用户在家，同样不允许改动背包）。
+    private var canPack: Bool {
+        canManage && store.activeSession == nil
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: GowithMetrics.moduleSpacing) {
@@ -120,7 +125,7 @@ struct PackingPage: View {
                         .padding(.vertical, 12)
                 } else {
                     ForEach(Array(packed.enumerated()), id: \.element.id) { index, item in
-                        PackedRow(item: item, isEditable: canManage) {
+                        PackedRow(item: item, isEditable: canPack) {
                             onPack(item)
                         }
                         if index < packed.count - 1 {
@@ -159,7 +164,7 @@ struct PackingPage: View {
                             item: item,
                             placeName: store.place(for: item.placeID)?.name,
                             isPacked: false,
-                            isEditable: canManage,
+                            isEditable: canPack,
                             onTogglePack: { onPack(item) },
                             onEdit: {}
                         )
