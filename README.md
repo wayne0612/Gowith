@@ -6,7 +6,7 @@ Gowith 是一款纯本地、零依赖的 iOS 出行物品管理 App。它记录�
 
 自 v1.0.1 起，App 提供**基础 / 进阶双模式**（右上角胶囊开关随时切换）：基础模式以黑白极简视觉聚焦「添加物品 → 装包出行 → 回家清点」核心闭环，进阶模式整体转深色并解锁地图与历史统计。
 
-![Platform](https://img.shields.io/badge/platform-iOS%2017%2B-blue) ![Framework](https://img.shields.io/badge/SwiftUI-iOS%2017-orange) ![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen) ![Version](https://img.shields.io/badge/version-1.0.1-blueviolet)
+![Platform](https://img.shields.io/badge/platform-iOS%2017%2B-blue) ![Framework](https://img.shields.io/badge/SwiftUI-iOS%2017-orange) ![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen) ![Version](https://img.shields.io/badge/version-1.1-blueviolet)
 
 ## 它解决什么问题
 
@@ -142,7 +142,8 @@ open Gowith/Gowith.xcodeproj
 
 ## 版本
 
-- **v1.0.1**（当前）—— 基础 / 进阶双模式 + 黑白极简视觉 + 物品图标库（109 枚 / 13 类）+ 首启教学动画，详见 [CHANGELOG](CHANGELOG.md)
+- **v1.1**（当前）—— 稳定性与体验：出行中清单锁定、待确认提醒入口、照片压缩、自动化测试，详见 [CHANGELOG](CHANGELOG.md)
+- **v1.0.1** —— 基础 / 进阶双模式 + 黑白极简视觉 + 物品图标库（109 枚 / 13 类）+ 首启教学动画
 - **v1.0.0** —— 纯本地 MVP：地点 / 背包 / 物品库 / 出行会话状态机 / 地理围栏提醒 / 历史记录
 
 后续方向（详见产品原型报告）：真机围栏回归、GowithStore 单元测试、Widget 快捷入口、多背包出行、云端同步。
