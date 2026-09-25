@@ -165,11 +165,15 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
 
     private func markOriginExited() {
         guard let session = activeSession, !session.hasExitedOrigin else { return }
+        // 「进阶 → 围栏提醒 → 离开地点时记录」关闭时仅标记，不切换目的地监测；仍可手动确认到达。
+        let exitRecordingEnabled = UserDefaults.standard.object(forKey: "gowith.exitRecordingEnabled") == nil
+            || UserDefaults.standard.bool(forKey: "gowith.exitRecordingEnabled")
         session.hasExitedOrigin = true
         if let sourceRegion = manager.monitoredRegions.first(where: { $0.identifier == sourceIdentifier(for: session) }) {
             manager.stopMonitoring(for: sourceRegion)
         }
         onSessionChanged?()
+        guard exitRecordingEnabled else { return }
         monitorPlaces(for: session)
     }
 

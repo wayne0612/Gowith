@@ -275,6 +275,50 @@ final class GowithStore: ObservableObject {
     var selectedPlace: GowithPlace? { places.first(where: { $0.id == selectedPlaceID }) }
     var selectedBackpack: GowithBackpack? { backpacks.first(where: { $0.id == selectedBackpackID }) }
 
+    /// 指定背包已装入的物品（出行中 placeID 为 nil 的随身物品也计入）。
+    func packedItems(in backpack: GowithBackpack?) -> [GowithItem] {
+        guard let backpack else { return [] }
+        let ids = Set(backpack.itemIDs)
+        return visibleItems.filter { ids.contains($0.id) }
+    }
+
+    /// 当前地点货架：在「当前地点」的物品 + 已装入背包的随身物品。
+    var shelfItems: [GowithItem] {
+        let packedIDs = Set(selectedBackpack?.itemIDs ?? [])
+        return visibleItems.filter { $0.placeID == selectedPlaceID || ($0.placeID == nil && packedIDs.contains($0.id)) }
+    }
+
+    /// 当前地点未装入背包的物品（拿东西页「货架剩余」）。
+    var remainingShelfItems: [GowithItem] {
+        let packedIDs = Set(selectedBackpack?.itemIDs ?? [])
+        return shelfItems.filter { !packedIDs.contains($0.id) }
+    }
+
+    /// 跨所有会话的待确认物品数（检查 Tab 角标；超过 3 天自动转遗失）。
+    var pendingItemCount: Int {
+        sessions.reduce(0) { $0 + $1.items.filter { $0.status == .pending }.count }
+    }
+
+    /// 分类排序：sortOrder 优先，其次创建时间。
+    var sortedCategories: [GowithCategory] {
+        categories.sorted { $0.sortOrder == $1.sortOrder ? $0.createdAt < $1.createdAt : $0.sortOrder < $1.sortOrder }
+    }
+
+    /// 清空全部数据（我的 → 清空全部数据）：回到首次启动状态。
+    func resetAll() {
+        for item in items { LocalImageStore.delete(fileName: item.imageFileName) }
+        for backpack in backpacks { LocalImageStore.delete(fileName: backpack.imageFileName) }
+        items = []
+        sessions = []
+        backpacks = []
+        categories = []
+        let home = GowithPlace(name: "我的家")
+        places = [home]
+        selectedPlaceID = home.id
+        selectedBackpackID = nil
+        save()
+    }
+
     func selectPlace(_ place: GowithPlace) {
         selectedPlaceID = place.id
         if !backpacksAtSelectedPlace.contains(where: { $0.id == selectedBackpackID }) {

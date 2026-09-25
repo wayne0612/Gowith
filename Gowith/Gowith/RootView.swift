@@ -1,163 +1,287 @@
 import CoreLocation
 import MapKit
-import PhotosUI
 import SwiftUI
-
-enum AppTab: Hashable {
-    case backpack
-    case library
-    case map
-    case profile
-}
 
 struct RootView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var store: GowithStore
     @EnvironmentObject private var locationService: LocationService
-    @AppStorage("gowith.hasSeenHero") private var hasSeenHero = false
+    @AppStorage("gowith.appMode") private var mode: AppMode = .basic
+    @AppStorage("gowith.hasSeenTutorial") private var hasSeenTutorial = false
     @AppStorage("gowith.didCompleteSetup") private var didCompleteSetup = false
-    @State private var selectedTab: AppTab = .backpack
+
+    @State private var selectedTab: AppTab = .library
+    @State private var isReviewingArrival = false
     @State private var showGoSummary = false
     @State private var showGoMessage = false
     @State private var goMessage = ""
+    @State private var showPendingAlert = false
+    @State private var showManualArrive = false
 
-    private var items: [GowithItem] { store.visibleItems }
-    private var sessions: [OutingSession] { store.sessions.sorted { $0.startedAt > $1.startedAt } }
+    // 装包飞球动画状态（规格 2.4）
+    @State private var packSourceAnchors: [PackAnchor] = []
+    @State private var tabAnchors: [AppTab: CGPoint] = [:]
+    @State private var packFlight: PackFlightState?
+    @State private var packingBadgePulse = 0
 
     var body: some View {
         Group {
-            if hasSeenHero {
-                if didCompleteSetup {
-                    mainInterface
-                } else {
-                    GowithSetupView {
-                        withAnimation(.easeInOut(duration: 0.25)) { didCompleteSetup = true }
-                    }
+            if !hasSeenTutorial {
+                TutorialView { hasSeenTutorial = true }
+            } else if !didCompleteSetup {
+                GowithSetupView {
+                    withAnimation(.easeInOut(duration: 0.25)) { didCompleteSetup = true }
                 }
             } else {
-                GowithHeroView {
-                    withAnimation(.easeInOut(duration: 0.25)) { hasSeenHero = true }
-                }
+                mainInterface
             }
         }
+        .preferredColorScheme(mode == .advanced ? .dark : .light)
+        .tint(GowithColor.accent)
     }
+
+    // MARK: 全局骨架（规格 3：固定头部 / 唯一滑动区 / 悬浮主按钮 / Tab 栏）
 
     private var mainInterface: some View {
-        TabView(selection: $selectedTab) {
-            BackpackView(onChooseItems: requestPickup)
-                .tabItem { Label("背包", systemImage: "backpack.fill") }
-                .tag(AppTab.backpack)
-
-            ItemLibraryView(
-                onOpenBackpack: { selectedTab = .backpack },
-                onStartOuting: requestGo,
-                onPickup: requestPickup
-            )
-            .tabItem { Label("物品库", systemImage: "archivebox.fill") }
-            .tag(AppTab.library)
-
-            Group {
-                if let activeSession = store.activeSession {
-                    GoView(currentSession: activeSession)
-                } else {
-                    PlacesMapView(onTakeItems: requestPickup)
+        navigationShell
+            .confirmationDialog("准备出发？", isPresented: $showGoSummary, titleVisibility: .visible) {
+                Button("开始出行") { startOuting() }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text(goSummary)
+            }
+            .alert("无法开始出行", isPresented: $showGoMessage) {
+                Button("好的", role: .cancel) {}
+            } message: {
+                Text(goMessage)
+            }
+            .alert("还有物品待确认", isPresented: $showPendingAlert) {
+                Button("返回核对", role: .cancel) {}
+                Button("继续完成") { completeSession() }
+            } message: {
+                Text("还有 \(unresolvedCount) 件物品待确认。继续完成后，它们会保留 3 天，期间可以在历史记录中补充确认。")
+            }
+            .confirmationDialog("确认到达地点", isPresented: $showManualArrive, titleVisibility: .visible) {
+                ForEach(store.places) { place in
+                    Button(place.name) { markArrived(at: place) }
+                }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("选择当前位置附近的已保存地点。到达其他地点后，可选择放入哪些物品。")
+            }
+            .task {
+                store.processExpiredPending()
+                locationService.onSessionChanged = { store.save() }
+                if let session = store.activeSession, session.status == .away {
+                    locationService.startMonitoring(session: session, places: store.places)
                 }
             }
-            .tabItem { Label("地图", systemImage: "map.fill") }
-            .tag(AppTab.map)
-
-            ProfileView(sessions: sessions, items: items)
-                .tabItem { Label("我的", systemImage: "person.fill") }
-                .tag(AppTab.profile)
-        }
-        .toolbarBackground(GowithColor.appBackground, for: .tabBar)
-        .toolbarBackground(.visible, for: .tabBar)
-        .background(GowithColor.appBackground)
-        .tint(GowithColor.sceneMint)
-        .animation(reduceMotion ? nil : GowithMotion.content, value: selectedTab)
-        .confirmationDialog("准备出发？", isPresented: $showGoSummary, titleVisibility: .visible) {
-            Button("开始出行") { startOuting() }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text(goSummary)
-        }
-        .alert("无法开始出行", isPresented: $showGoMessage) {
-            Button("好的", role: .cancel) {}
-            if store.selectedBackpack == nil {
-                Button("去背包页") { selectedTab = .backpack }
-            } else {
-                Button("去物品库") { selectedTab = .library }
+            .onChange(of: locationService.arrivedPlaceID) { _, placeID in
+                handleArrival(placeID)
             }
-        } message: {
-            Text(goMessage)
-        }
-        .task {
-            store.processExpiredPending()
-            locationService.onSessionChanged = { store.save() }
-            if let session = store.activeSession, session.status == .away {
-                locationService.startMonitoring(session: session, places: store.places)
+            .onChange(of: selectedTab) { _, _ in store.processExpiredPending() }
+            .onChange(of: mode) { _, newMode in
+                if newMode == .basic && selectedTab == .map { selectedTab = .profile }
             }
-        }
-        .onChange(of: locationService.arrivedPlaceID) { _, placeID in
-            guard let placeID, let session = store.activeSession, session.status == .away,
-                  let place = store.place(for: placeID) else { return }
-            session.applyArrival(at: place)
-            GowithHaptics.success()
-            store.save()
-        }
-        .onChange(of: selectedTab) { _, _ in store.processExpiredPending() }
     }
+
+    private var navigationShell: some View {
+        ZStack {
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .id(selectedTab)
+                .transition(reduceMotion ? AnyTransition.opacity : AnyTransition.opacity.combined(with: .scale(scale: 0.99)))
+        }
+        .background(GowithColor.appBackground)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            AppHeader(mode: $mode)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            bottomControls
+        }
+        .coordinateSpace(name: "root")
+        .overlay { packBallOverlay }
+        .onPreferenceChange(PackSourceKey.self) { packSourceAnchors = $0 }
+        .onPreferenceChange(TabAnchorKey.self) { tabAnchors = $0 }
+        .animation(reduceMotion ? nil : GowithMotion.content, value: selectedTab)
+    }
+
+    private var bottomControls: some View {
+        VStack(spacing: 0) {
+            if let button = mainButton {
+                MainButtonArea(title: button.title, isEnabled: button.isEnabled, action: button.action)
+            }
+            GowithTabBar(items: tabItems, selection: $selectedTab)
+        }
+        .background(GowithColor.appBackground)
+    }
+
+    private func handleArrival(_ placeID: UUID?) {
+        guard let placeID, let session = store.activeSession, session.status == .away,
+              let place = store.place(for: placeID) else { return }
+        session.applyArrival(at: place)
+        isReviewingArrival = false
+        locationService.stopMonitoring()
+        GowithHaptics.success()
+        store.save()
+        selectedTab = .check
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch selectedTab {
+        case .library:
+            LibraryPage(onPack: handlePack)
+        case .packing:
+            PackingPage(onPack: handlePack, onRequestManualArrive: { showManualArrive = true })
+        case .check:
+            CheckPage(isReviewingArrival: $isReviewingArrival)
+        case .map:
+            AdvancedMapPage()
+        case .profile:
+            ProfilePage()
+        }
+    }
+
+    // MARK: Tab 与角标
+
+    private var packedItems: [GowithItem] { store.packedItems(in: store.selectedBackpack) }
+    private var pendingCount: Int { store.pendingItemCount }
+    private var unresolvedCount: Int {
+        guard let session = store.activeSession, session.status == .checking else { return 0 }
+        return session.items.filter { $0.status == .unconfirmed }.count
+    }
+
+    private var tabItems: [GowithTabItem] {
+        var items = [
+            GowithTabItem(tab: .library, title: "物品库", icon: "square.grid.2x2.fill"),
+            GowithTabItem(tab: .packing, title: "拿东西", icon: "backpack.fill", badge: packedItems.count),
+            GowithTabItem(tab: .check, title: "检查", icon: "checklist", badge: pendingCount),
+        ]
+        if mode == .advanced {
+            items.append(GowithTabItem(tab: .map, title: "地图", icon: "map.fill"))
+        }
+        items.append(GowithTabItem(tab: .profile, title: "我的", icon: "person.fill"))
+        return items
+    }
+
+    // MARK: 悬浮主按钮状态机
+
+    private struct MainButtonConfig {
+        let title: String
+        var isEnabled = true
+        let action: () -> Void
+    }
+
+    private var mainButton: MainButtonConfig? {
+        switch selectedTab {
+        case .packing:
+            if let session = store.activeSession {
+                switch session.status {
+                case .away:
+                    // 出行中：整页只读，主按钮禁用（规格 5.2）
+                    return MainButtonConfig(title: "到达后自动提醒清点", isEnabled: false, action: {})
+                case .arrived, .checking:
+                    return MainButtonConfig(title: "返回清点", action: { selectedTab = .check })
+                default:
+                    break
+                }
+            }
+            let count = packedItems.count
+            return MainButtonConfig(title: "开始出行（\(count) 件）", isEnabled: count > 0, action: requestGo)
+        case .check:
+            guard let session = store.activeSession else { return nil }
+            switch session.status {
+            case .checking:
+                let returned = session.items.filter { $0.status == .returned }.count
+                return MainButtonConfig(title: "完成清点（\(returned)/\(session.items.count)）", action: requestCompletion)
+            case .arrived:
+                return isReviewingArrival
+                    ? MainButtonConfig(title: "完成放入目的地", action: completeArrival)
+                    : MainButtonConfig(title: "开始检阅", action: beginArrivalReview)
+            default:
+                return nil
+            }
+        default:
+            return nil
+        }
+    }
+
+    // MARK: 装包飞球（规格 2.4）
+
+    private struct PackFlightState {
+        let from: CGPoint
+        let to: CGPoint
+        var animated = false
+    }
+
+    private var packBallOverlay: some View {
+        ZStack {
+            if let flight = packFlight {
+                Circle()
+                    .fill(GowithColor.accent)
+                    .frame(width: 14, height: 14)
+                    .position(flight.animated ? flight.to : flight.from)
+                    .scaleEffect(flight.animated ? 0.4 : 1)
+                    .opacity(flight.animated ? 0 : 1)
+                    .animation(reduceMotion ? nil : GowithMotion.packBall, value: flight.animated)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func handlePack(_ item: GowithItem) {
+        guard let backpack = store.selectedBackpack else { return }
+        let willPack = !backpack.itemIDs.contains(item.id)
+        store.toggleItem(item, in: backpack)
+        GowithHaptics.selection()
+        guard willPack, !reduceMotion else { return }
+        guard let from = packSourceAnchors.last(where: { $0.id == item.id })?.center,
+              let to = tabAnchors[.packing] else { return }
+        packFlight = PackFlightState(from: from, to: to)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 30_000_000)
+            withAnimation(GowithMotion.packBall) { self.packFlight?.animated = true }
+            try? await Task.sleep(nanoseconds: 560_000_000)
+            self.packFlight = nil
+        }
+    }
+
+    // MARK: 出行会话（沿用现有逻辑，状态机不变）
 
     private var goSummary: String {
         guard let backpack = store.selectedBackpack else { return "请先选择一个背包。" }
-        let packed = store.itemsAtSelectedPlace.filter { backpack.itemIDs.contains($0.id) }
-        return "本次使用「\(backpack.name)」，共携带 \(packed.count) 件物品。开始后会保存本次清单。"
+        return "本次使用「\(backpack.name)」，共携带 \(packedItems.count) 件物品。开始后会保存本次清单。"
     }
 
     private func requestGo() {
-        guard store.activeSession == nil else { selectedTab = .map; return }
+        guard store.activeSession == nil else { selectedTab = .check; return }
         guard let place = store.selectedPlace, locationService.isInside(place) else {
             goMessage = "到达当前地点约 50 米范围内后，才能开始出行。"
             showGoMessage = true
             return
         }
         guard let backpack = store.selectedBackpack else {
-            goMessage = "还没有选择背包。先创建或选择一个背包，再开始出行。"
+            goMessage = "还没有选择背包。先选择一个背包，再开始出行。"
             showGoMessage = true
             return
         }
-        let packed = store.itemsAtSelectedPlace.filter { backpack.itemIDs.contains($0.id) }
-        guard !packed.isEmpty else {
-            goMessage = "「\(backpack.name)」还没有物品。先去物品库选择本次要携带的物品。"
+        guard !packedItems.isEmpty else {
+            goMessage = "「\(backpack.name)」还没有物品。先从货架装入本次要携带的物品。"
             showGoMessage = true
             return
         }
         showGoSummary = true
     }
 
-    private func requestPickup() {
-        guard let place = store.selectedPlace else {
-            goMessage = "先在地图中添加或选择一个家。"
-            showGoMessage = true
-            return
-        }
-        guard locationService.isInside(place) else {
-            goMessage = "到达「\(place.name)」约 50 米范围内后，才能拿取或调整这里的物品。"
-            showGoMessage = true
-            return
-        }
-        selectedTab = .library
-    }
-
     private func startOuting() {
         guard let backpack = store.selectedBackpack else { return }
-        let packed = store.itemsAtSelectedPlace.filter { backpack.itemIDs.contains($0.id) }
-        guard !packed.isEmpty else { return }
+        guard !packedItems.isEmpty else { return }
         let session = OutingSession(backpack: backpack)
-        session.items = packed.map(SessionItem.init(item:))
+        session.items = packedItems.map(SessionItem.init(item:))
         session.originPlaceID = store.selectedPlace?.id
         session.originPlaceNameSnapshot = store.selectedPlace?.name
-        for item in packed { item.placeID = nil }
+        for item in packedItems { item.placeID = nil }
         backpack.placeID = nil
         session.status = .away
         session.wentOutAt = .now
@@ -165,9 +289,187 @@ struct RootView: View {
         store.save()
         GowithHaptics.stateChange()
         locationService.startMonitoring(session: session, places: store.places)
-        selectedTab = .map
+    }
+
+    private func markArrived(at place: GowithPlace) {
+        guard let session = store.activeSession, session.status == .away else { return }
+        session.applyArrival(at: place)
+        isReviewingArrival = false
+        locationService.stopMonitoring()
+        GowithHaptics.stateChange()
+        store.save()
+        selectedTab = .check
+    }
+
+    private func requestCompletion() {
+        if unresolvedCount > 0 || (store.activeSession?.items.filter { $0.status == .pending }.count ?? 0) > 0 {
+            showPendingAlert = true
+        } else {
+            completeSession()
+        }
+    }
+
+    private func completeSession() {
+        guard let session = store.activeSession else { return }
+        for item in session.items where item.status == .unconfirmed {
+            item.status = .pending
+            item.pendingSince = session.checkingStartedAt ?? .now
+        }
+        session.status = .completed
+        session.completedAt = .now
+        // 已带回与待确认的物品都归入出发地；待确认物品之后仍可在历史记录中改为遗失。
+        let homeID = session.originPlaceID ?? store.places.first?.id
+        if let homeID {
+            for sessionItem in session.items where sessionItem.status == .returned || sessionItem.status == .pending {
+                if let original = store.items.first(where: { $0.id == sessionItem.itemID }) { original.placeID = homeID }
+            }
+            if let backpack = store.backpacks.first(where: { $0.id == session.backpackID }) { backpack.placeID = homeID }
+        }
+        locationService.stopMonitoring()
+        GowithHaptics.success()
+        store.save()
+        isReviewingArrival = false
+        selectedTab = .library
+    }
+
+    private func beginArrivalReview() {
+        guard let session = store.activeSession, session.status == .arrived else { return }
+        for item in session.items { item.isSelected = true }
+        withAnimation(GowithMotion.content) { isReviewingArrival = true }
+        GowithHaptics.selection()
+        store.save()
+    }
+
+    private func completeArrival() {
+        guard let session = store.activeSession else { return }
+        guard let destinationID = session.destinationPlaceID,
+              let destination = store.place(for: destinationID) else { return }
+        let backpack = store.backpacks.first(where: { $0.id == session.backpackID })
+        for sessionItem in session.items {
+            if sessionItem.isSelected {
+                if let item = store.items.first(where: { $0.id == sessionItem.itemID }) { item.placeID = destinationID }
+                backpack?.itemIDs.removeAll { $0 == sessionItem.itemID }
+                sessionItem.status = .stored
+                sessionItem.destinationPlaceID = destinationID
+            } else {
+                sessionItem.status = .carried
+            }
+        }
+        backpack?.placeID = destinationID
+        session.status = .completed
+        session.completedAt = .now
+        locationService.stopMonitoring()
+        GowithHaptics.success()
+        store.selectPlace(destination)
+        if let backpack { store.selectBackpack(backpack) }
+        store.save()
+        isReviewingArrival = false
+        selectedTab = .library
     }
 }
+
+// MARK: - 首启教学动画（规格 5.8：三帧横滑，可跳过）
+
+private struct TutorialView: View {
+    let onFinish: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var page = 0
+
+    private struct Frame {
+        let kicker: String
+        let emoji: String
+        let title: String
+        let lines: [String]
+    }
+
+    private let frames: [Frame] = [
+        Frame(kicker: "01 / 添加", emoji: "📦", title: "把物品放进货架",
+              lines: ["记下你常带的每一样东西，", "它们都会出现在物品库里。"]),
+        Frame(kicker: "02 / 装包", emoji: "🎒", title: "点 + 装入背包",
+              lines: ["装入后「拿东西」角标实时计数，", "点底部按钮开始出行。"]),
+        Frame(kicker: "03 / 清点", emoji: "✅", title: "回家逐项打勾",
+              lines: ["到家后逐项确认，", "找不到的 3 天内可补登。"]),
+    ]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            TabView(selection: $page) {
+                ForEach(frames.indices, id: \.self) { index in
+                    tutorialFrame(frames[index])
+                        .tag(index)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: page)
+
+            HStack {
+                Spacer()
+                if page < frames.count - 1 {
+                    Button("跳过 ›") { onFinish() }
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(GowithColor.inkTertiary)
+                        .frame(minWidth: 44, minHeight: 44)
+                } else {
+                    Button {
+                        onFinish()
+                    } label: {
+                        Text("开始体验 →")
+                            .font(.system(size: 13, weight: .heavy, design: .rounded))
+                            .foregroundStyle(GowithColor.onPrimary)
+                            .padding(.horizontal, 22)
+                            .frame(minHeight: 44)
+                            .background(GowithColor.ink, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, GowithMetrics.pagePadding + 8)
+            .padding(.bottom, 18)
+
+            HStack(spacing: 6) {
+                ForEach(frames.indices, id: \.self) { index in
+                    Capsule()
+                        .fill(index == page ? GowithColor.ink : GowithColor.inkTertiary.opacity(0.3))
+                        .frame(width: index == page ? 20 : 4, height: 4)
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: page)
+                }
+            }
+            .frame(height: 20)
+            .padding(.bottom, 12)
+        }
+        .background(GowithColor.appBackground)
+    }
+
+    private func tutorialFrame(_ frame: Frame) -> some View {
+        VStack(spacing: 0) {
+            Spacer()
+            Text(frame.kicker)
+                .font(.system(size: 11, weight: .bold))
+                .tracking(2)
+                .foregroundStyle(GowithColor.accent)
+            Text(frame.emoji)
+                .font(.system(size: 96))
+                .padding(.vertical, 30)
+            Text(frame.title)
+                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                .foregroundStyle(GowithColor.ink)
+            VStack(spacing: 3) {
+                ForEach(frame.lines, id: \.self) { line in
+                    Text(line)
+                        .font(.system(size: 13))
+                        .foregroundStyle(GowithColor.inkSecondary)
+                }
+            }
+            .padding(.top, 10)
+            Spacer()
+            Spacer()
+        }
+        .padding(.horizontal, 32)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - 首启设置（规格 6.2：教学动画播完后进入，负责首个地点/背包/物品创建）
 
 struct GowithSetupView: View {
     @EnvironmentObject private var store: GowithStore
@@ -191,14 +493,14 @@ struct GowithSetupView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Gowith")
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .tracking(-1)
+                    (Text("Gowith").font(.system(size: 34, weight: .heavy, design: .rounded)).tracking(-1).foregroundStyle(GowithColor.ink)
+                     + Text(".").font(.system(size: 34, weight: .heavy, design: .rounded)).tracking(-1).foregroundStyle(GowithColor.accent))
                     Text("先建立你的第一个出发点")
-                        .font(.title2.weight(.semibold))
-                    Text("这些基础信息会帮助 Gowith 之后判断你在哪里，以及哪些物品属于这个家。")
-                        .font(.body)
-                        .foregroundStyle(GowithColor.secondary)
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(GowithColor.ink)
+                    Text("这些信息会用于判断你在哪里，以及哪些物品属于这个家。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(GowithColor.inkSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -210,19 +512,21 @@ struct GowithSetupView: View {
                     }
                 }
 
-                GowithCard(padding: 18) {
+                GowithCard {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(spacing: 12) {
                             Image(systemName: coordinate == nil ? "location.slash" : "location.fill")
-                                .foregroundStyle(coordinate == nil ? .white : GowithColor.primary)
-                                .frame(width: 38, height: 38)
-                                .background(coordinate == nil ? GowithColor.primary : GowithColor.success, in: Circle())
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(GowithColor.onPrimary)
+                                .frame(width: 36, height: 36)
+                                .background(coordinate == nil ? GowithColor.inkTertiary : GowithColor.accent, in: Circle())
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("设置这个家的位置")
-                                    .font(.subheadline.weight(.semibold))
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(GowithColor.ink)
                                 Text(coordinate == nil ? "使用当前位置，或在下方地图点选位置" : "位置已准备好，之后会用于到达提醒")
-                                    .font(.caption)
-                                    .foregroundStyle(GowithColor.secondary)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(GowithColor.inkSecondary)
                             }
                         }
                         GowithSecondaryButton(title: coordinate == nil ? "使用当前位置" : "重新获取当前位置", systemImage: "location.fill") {
@@ -235,8 +539,8 @@ struct GowithSetupView: View {
                             Map(position: $setupCamera) {
                                 if let coordinate {
                                     MapCircle(center: coordinate, radius: 50)
-                                        .foregroundStyle(GowithColor.success.opacity(0.3))
-                                        .stroke(GowithColor.success, lineWidth: 1.5)
+                                        .foregroundStyle(GowithColor.accent.opacity(0.22))
+                                        .stroke(GowithColor.accent, lineWidth: 1.5)
                                     Marker("家的位置", systemImage: "house.fill", coordinate: coordinate)
                                 }
                             }
@@ -250,8 +554,8 @@ struct GowithSetupView: View {
                         }
                         if !locationService.statusMessage.isEmpty {
                             Text(locationService.statusMessage)
-                                .font(.caption)
-                                .foregroundStyle(GowithColor.secondary)
+                                .font(.system(size: 11))
+                                .foregroundStyle(GowithColor.inkSecondary)
                         }
                     }
                 }
@@ -263,13 +567,13 @@ struct GowithSetupView: View {
                 .opacity(canComplete ? 1 : 0.45)
 
                 if showValidation {
-                    Text("请填写地点、背包和一件常用物品，并设置当前位置。")
-                        .font(.caption)
-                        .foregroundStyle(GowithColor.secondary)
+                    Text("请填写地点、背包和一件常用物品，并设置位置。")
+                        .font(.system(size: 11))
+                        .foregroundStyle(GowithColor.inkSecondary)
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
-            .padding(.horizontal, GowithMetrics.pagePadding)
+            .padding(.horizontal, 20)
             .padding(.top, 36)
             .padding(.bottom, 28)
         }
@@ -290,10 +594,11 @@ struct GowithSetupView: View {
     private func setupField(title: String, hint: String, text: Binding<String>, icon: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(title, systemImage: icon)
-                .font(.subheadline.weight(.semibold))
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(GowithColor.ink)
             TextField(hint, text: text)
                 .textFieldStyle(.plain)
-                .font(.body)
+                .font(.system(size: 15))
                 .padding(.horizontal, 14)
                 .frame(minHeight: 48)
                 .background(GowithColor.softSurface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
@@ -329,406 +634,5 @@ struct GowithSetupView: View {
         store.selectBackpack(backpack)
         store.save()
         onComplete()
-    }
-}
-
-struct BackpackView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @EnvironmentObject private var store: GowithStore
-    @EnvironmentObject private var locationService: LocationService
-    let onChooseItems: () -> Void
-    @State private var selectedIndex = 0
-    @State private var editingBackpack: GowithBackpack?
-    @State private var showAddBackpack = false
-    @State private var showAddItem = false
-    @State private var showDeleteConfirmation = false
-    @State private var showHistory = false
-    @State private var backpackToDelete: GowithBackpack?
-
-    private var backpacks: [GowithBackpack] { store.backpacksAtSelectedPlace }
-    /// 跨所有会话的待确认物品数：超过 3 天会自动转遗失，需要在首屏可见。
-    private var pendingCount: Int {
-        store.sessions.reduce(0) { $0 + $1.items.filter { $0.status == .pending }.count }
-    }
-    private var canManageSelectedPlace: Bool {
-        guard let place = store.selectedPlace else { return false }
-        return locationService.isInside(place)
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 24) {
-                    GowithTopBar(pageTitle: "背包") {
-                        Menu {
-                            Button("添加背包", systemImage: "backpack.badge.plus") { showAddBackpack = true }
-                            Button("添加物品", systemImage: "plus.square") { showAddItem = true }
-                                .disabled(!canManageSelectedPlace)
-                            Button("去家里拿物品", systemImage: "arrow.down.to.line.compact", action: onChooseItems)
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 22, weight: .medium))
-                                .foregroundStyle(GowithColor.primary)
-                                .frame(width: 44, height: 44)
-                                .background(GowithColor.surface, in: Circle())
-                        }
-                        .accessibilityLabel("添加和取物品")
-                    }
-                    GowithContextStrip()
-                    if pendingCount > 0 {
-                        GowithStatusScene(
-                            color: GowithColor.sceneAmber,
-                            systemImage: "clock.badge.exclamationmark.fill",
-                            title: "\(pendingCount) 件物品待确认",
-                            message: "超过 3 天未确认会自动标记为遗失。",
-                            actionTitle: "去确认",
-                            action: { showHistory = true }
-                        )
-                    }
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("选择一个背包")
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(GowithColor.primary)
-                        Spacer()
-                        Text("\(backpacks.count) 个")
-                            .font(.footnote.weight(.medium))
-                            .foregroundStyle(GowithColor.tertiary)
-                    }
-                    if backpacks.isEmpty {
-                        emptyState
-                    } else {
-                        backpackCarousel
-                        positionDots
-                        packedItemsList
-                    GowithBottomAction(title: "选择物品", systemImage: "arrow.right", action: onChooseItems)
-                    }
-                }
-                .padding(.horizontal, GowithMetrics.pagePadding)
-                .padding(.top, 20)
-                .padding(.bottom, 24)
-            }
-            .scrollIndicators(.hidden)
-            .background(GowithColor.appBackground)
-            .sheet(isPresented: $showAddBackpack) { BackpackEditorView() }
-            .sheet(isPresented: $showAddItem) { ItemEditorView() }
-            .sheet(item: $editingBackpack) { backpack in BackpackEditorView(backpack: backpack) }
-            .sheet(isPresented: $showHistory) { HistoryView() }
-            .confirmationDialog("删除这个背包？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
-                Button("删除背包", role: .destructive) {
-                    if let backpackToDelete { delete(backpackToDelete) }
-                }
-                Button("取消", role: .cancel) {}
-            } message: {
-                Text("只会删除背包及其装包清单，不会删除物品库中的物品。")
-            }
-            .onAppear { syncSelection() }
-            .onChange(of: store.selectedPlaceID) { _, _ in
-                selectedIndex = 0
-                syncSelection()
-            }
-            .onChange(of: selectedIndex) { _, _ in selectCurrentBackpack() }
-            .onChange(of: backpacks.count) { _, _ in syncSelection() }
-        }
-    }
-
-    private var backpackCarousel: some View {
-        GowithObjectRail(itemCount: backpacks.count, selectedIndex: $selectedIndex) { index, _ in
-            if backpacks.indices.contains(index) {
-                backpackCard(backpacks[index], width: 280)
-            }
-        }
-        .onAppear {
-            let index = backpacks.indices.contains(selectedIndex) ? selectedIndex : 0
-            selectedIndex = index
-            selectCurrentBackpack()
-        }
-    }
-
-    @ViewBuilder
-    private func backpackCard(_ backpack: GowithBackpack, width: CGFloat) -> some View {
-        let index = backpacks.firstIndex(where: { $0.id == backpack.id }) ?? 0
-        VStack(alignment: .leading, spacing: 12) {
-            GowithFocusField(color: sceneColor(for: index), height: 270) {
-                ZStack(alignment: .topTrailing) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("当前背包")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(GowithColor.primary.opacity(0.66))
-                        Text(backpack.name)
-                            .font(.title.weight(.bold))
-                            .foregroundStyle(GowithColor.primary)
-                            .lineLimit(1)
-                            .padding(.top, 4)
-                        Spacer()
-                        HStack {
-                            Label("\(backpack.itemIDs.count) 件物品", systemImage: "archivebox.fill")
-                                .font(.footnote.weight(.semibold))
-                            Spacer()
-                            Text("可出行")
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(.white.opacity(0.36), in: Capsule())
-                        }
-                        .foregroundStyle(GowithColor.primary.opacity(0.78))
-                    }
-                    .padding(22)
-
-                    VStack(spacing: -14) {
-                        backpackArtwork(backpack)
-                            .frame(width: 176, height: 176)
-                        backpackArtwork(backpack)
-                            .scaleEffect(y: -1)
-                            .blur(radius: 1.8)
-                            .opacity(0.16)
-                            .mask(LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom))
-                            .frame(width: 176, height: 70)
-                    }
-                    .offset(x: 16, y: 54)
-
-                    Button { editingBackpack = backpack } label: {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(GowithColor.primary)
-                            .frame(width: 44, height: 44)
-                            .background(.white.opacity(0.42), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .padding(14)
-                    .accessibilityLabel("编辑\(backpack.name)")
-                }
-            }
-        }
-        .frame(width: width)
-        .contextMenu {
-            Button("删除背包", systemImage: "trash", role: .destructive) {
-                backpackToDelete = backpack
-                showDeleteConfirmation = true
-            }
-            .disabled(store.activeSession?.backpackID == backpack.id)
-        }
-    }
-
-    @ViewBuilder
-    private func backpackArtwork(_ backpack: GowithBackpack) -> some View {
-        if let image = LocalImageStore.cachedImage(fileName: backpack.imageFileName) {
-            Image(uiImage: image).resizable().scaledToFit()
-        } else if let option = Gowith3DIconOption.option(for: backpack.symbolName) {
-            Gowith3DIcon(option: option, size: 170)
-        } else {
-            Image(systemName: backpack.symbolName)
-                .font(.system(size: 88, weight: .light))
-                .foregroundStyle(GowithColor.primary)
-        }
-    }
-
-    private var positionDots: some View {
-        HStack(spacing: 8) {
-            ForEach(0..<dotCount, id: \.self) { dot in
-                Circle()
-                    .fill(dot == activeDot ? GowithColor.primary : GowithColor.tertiary.opacity(0.35))
-                    .frame(width: dot == activeDot ? 8 : 6, height: dot == activeDot ? 8 : 6)
-                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: activeDot)
-            }
-        }
-        .frame(height: 18)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("背包位置")
-        .accessibilityValue("第\(selectedIndex + 1)个，共\(backpacks.count)个")
-    }
-
-    /// 背包不超过 3 个时，每个背包一个圆点；超过 3 个时收敛为「开头/中间/结尾」三个位置点。
-    private var dotCount: Int { min(backpacks.count, 3) }
-
-    private var activeDot: Int {
-        if backpacks.count <= 3 { return selectedIndex }
-        if selectedIndex == 0 { return 0 }
-        if selectedIndex == backpacks.count - 1 { return 2 }
-        return 1
-    }
-
-    private var emptyState: some View {
-        GowithCard {
-            VStack(spacing: 14) {
-                Image(systemName: "backpack").font(.system(size: 38, weight: .light))
-                Text("还没有背包").font(.title3.weight(.semibold))
-                Text("创建一个背包，开始准备本次出行。")
-                    .font(.body).foregroundStyle(GowithColor.secondary).multilineTextAlignment(.center)
-                GowithPrimaryButton(title: "创建背包", systemImage: "plus") { showAddBackpack = true }.padding(.top, 4)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 24)
-        }
-    }
-
-    private var packedItemsList: some View {
-        let itemIDs = Set(store.selectedBackpack?.itemIDs ?? [])
-        let packedItems = store.visibleItems.filter { itemIDs.contains($0.id) }
-        return VStack(alignment: .leading, spacing: 10) {
-            GowithSectionHeader(title: "已装入物品", trailing: "\(packedItems.count) 件")
-            if packedItems.isEmpty {
-                Text("这个背包还没有物品")
-                    .font(.subheadline)
-                    .foregroundStyle(GowithColor.tertiary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 12)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(packedItems.enumerated()), id: \.element.id) { index, item in
-                        GowithInventoryRow(
-                            item: item,
-                            stateTitle: "已携带",
-                            stateIcon: "checkmark.circle.fill",
-                            actionTitle: "从当前背包移除",
-                            actionIcon: "minus"
-                        ) {
-                            guard let backpack = store.selectedBackpack, canManageSelectedPlace else { return }
-                            store.toggleItem(item, in: backpack)
-                        }
-                        if index < packedItems.count - 1 { Divider().padding(.leading, 66) }
-                    }
-                }
-                .background(GowithColor.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            }
-        }
-    }
-
-    private func sceneColor(for index: Int) -> Color {
-        switch index % 4 {
-        case 1: return GowithColor.sceneViolet
-        case 2: return GowithColor.sceneSky
-        case 3: return GowithColor.sceneOrange
-        default: return GowithColor.sceneMint
-        }
-    }
-
-    private func syncSelection() {
-        guard !backpacks.isEmpty else { selectedIndex = 0; return }
-        if let id = store.selectedBackpackID, let index = backpacks.firstIndex(where: { $0.id == id }) {
-            selectedIndex = index
-        } else {
-            selectedIndex = min(selectedIndex, backpacks.count - 1)
-            store.selectBackpack(backpacks[selectedIndex])
-        }
-    }
-
-    private func selectCurrentBackpack() {
-        guard backpacks.indices.contains(selectedIndex) else { return }
-        store.selectBackpack(backpacks[selectedIndex])
-    }
-
-    private func delete(_ backpack: GowithBackpack) {
-        // 进行中的出行会话引用该背包时禁止删除，避免会话数据悬空。
-        guard store.activeSession?.backpackID != backpack.id else { return }
-        store.backpacks.removeAll { $0.id == backpack.id }
-        if store.selectedBackpackID == backpack.id { store.selectedBackpackID = store.visibleBackpacks.first?.id }
-        store.save()
-    }
-}
-
-struct BackpackEditorView: View {
-    @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var store: GowithStore
-    let backpack: GowithBackpack?
-    @State private var name: String
-    @State private var symbolName: String
-    @State private var selectedPhoto: PhotosPickerItem?
-    @State private var imageData: Data?
-
-    init(backpack: GowithBackpack? = nil) {
-        self.backpack = backpack
-        _name = State(initialValue: backpack?.name ?? "")
-        _symbolName = State(initialValue: backpack?.symbolName ?? "backpack.fill")
-        _imageData = State(initialValue: LocalImageStore.load(fileName: backpack?.imageFileName))
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("背包名称") { TextField("例如：通勤包", text: $name) }
-                Section("背包图标") {
-                    HStack {
-                        if let imageData, let image = UIImage(data: imageData) {
-                            Image(uiImage: image).resizable().scaledToFill().frame(width: 64, height: 64).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        } else if let option = Gowith3DIconOption.option(for: symbolName) {
-                            Gowith3DIcon(option: option, size: 64)
-                        } else {
-                            Image(systemName: symbolName).font(.system(size: 28)).frame(width: 64, height: 64).background(GowithColor.softSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        }
-                        Spacer()
-                        PhotosPicker(selection: $selectedPhoto, matching: .images) { Label("选择照片", systemImage: "photo") }
-                    }
-                    if imageData != nil { Button("使用系统图标") { imageData = nil } }
-                    Text("3D 图标").font(.subheadline.weight(.medium))
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 10) {
-                        ForEach(Gowith3DIconOption.all) { option in
-                            Button {
-                                symbolName = option.id
-                                imageData = nil
-                            } label: {
-                                VStack(spacing: 4) {
-                                    Gowith3DIcon(option: option, size: 42)
-                                    Text(option.title).font(.caption2).lineLimit(1)
-                                }
-                                .frame(maxWidth: .infinity, minHeight: 70)
-                                .background(symbolName == option.id && imageData == nil ? GowithColor.success : GowithColor.softSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    Text("系统图标").font(.subheadline.weight(.medium))
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 12) {
-                        ForEach(symbolOptions, id: \.self) { symbol in
-                            Button { symbolName = symbol; imageData = nil } label: {
-                                Image(systemName: symbol)
-                                    .font(.system(size: 21))
-                                    .foregroundStyle(symbolName == symbol ? .white : GowithColor.primary)
-                                    .frame(maxWidth: .infinity, minHeight: 48)
-                                    .background(symbolName == symbol ? GowithColor.primary : GowithColor.softSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .background(GowithColor.appBackground)
-            .navigationTitle(backpack == nil ? "添加背包" : "编辑背包")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") { save() }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-            .task(id: selectedPhoto) {
-                guard let selectedPhoto, let data = try? await selectedPhoto.loadTransferable(type: Data.self) else { return }
-                imageData = data
-            }
-        }
-    }
-
-    private let symbolOptions = ["backpack.fill", "briefcase.fill", "suitcase.fill", "bag.fill", "basket.fill", "cart.fill", "shippingbox.fill", "duffel.bag.fill"]
-
-    private func save() {
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let newFileName = imageData.flatMap(LocalImageStore.save(data:))
-        if let backpack {
-            backpack.name = trimmedName
-            backpack.symbolName = symbolName
-            if let newFileName {
-                LocalImageStore.delete(fileName: backpack.imageFileName)
-                backpack.imageFileName = newFileName
-            } else if imageData == nil {
-                LocalImageStore.delete(fileName: backpack.imageFileName)
-                backpack.imageFileName = nil
-            }
-        } else {
-            let newBackpack = GowithBackpack(name: trimmedName, symbolName: symbolName, imageFileName: newFileName, placeID: store.selectedPlaceID)
-            store.backpacks.append(newBackpack)
-            if store.selectedBackpackID == nil || store.selectedPlaceID == newBackpack.placeID { store.selectedBackpackID = newBackpack.id }
-        }
-        store.save()
-        dismiss()
     }
 }

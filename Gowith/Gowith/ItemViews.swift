@@ -1,282 +1,488 @@
 import PhotosUI
 import SwiftUI
 
-struct ItemLibraryView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+// MARK: - 物品库页（规格 5.1）
+
+struct LibraryPage: View {
     @EnvironmentObject private var store: GowithStore
     @EnvironmentObject private var locationService: LocationService
-    let onOpenBackpack: () -> Void
-    let onStartOuting: () -> Void
-    let onPickup: () -> Void
+    let onPack: (GowithItem) -> Void
+
     @State private var selectedCategoryID: UUID?
     @State private var editingItem: GowithItem?
-    @State private var showCategoryEditor = false
-    @State private var showItemEditor = false
+    @State private var showAddItem = false
     @State private var editingCategory: GowithCategory?
+    @State private var showCategoryEditor = false
+    @State private var highlightedItemID: UUID?
 
-    private var items: [GowithItem] {
-        let bagIDs = Set(selectedBackpack?.itemIDs ?? [])
-        return store.visibleItems.filter { $0.placeID == store.selectedPlaceID || ($0.placeID == nil && bagIDs.contains($0.id)) }
+    /// 物品库展示全部未归档物品（含在其他地点的），行内按地点状态区分可操作性（规格 v8：充电线在「公司」也可见）。
+    private var items: [GowithItem] { store.visibleItems }
+    private var categories: [GowithCategory] { store.sortedCategories }
+    private var packedCount: Int { store.packedItems(in: store.selectedBackpack).count }
+    private var canManage: Bool {
+        guard let place = store.selectedPlace else { return false }
+        return locationService.isInside(place)
     }
-    private var categories: [GowithCategory] { store.categories.sorted { $0.sortOrder == $1.sortOrder ? $0.createdAt < $1.createdAt : $0.sortOrder < $1.sortOrder } }
-    private var selectedBackpack: GowithBackpack? { store.selectedBackpack }
-    private var selectedPlace: GowithPlace? { store.selectedPlace }
-    private var canManageSelectedPlace: Bool {
-        guard let selectedPlace else { return false }
-        return locationService.isInside(selectedPlace)
+
+    /// 只有「位于当前地点」或「已在背包」的物品可以在围栏内操作。
+    private func isManageable(_ item: GowithItem) -> Bool {
+        guard canManage else { return false }
+        return item.placeID == store.selectedPlaceID || store.selectedBackpack?.itemIDs.contains(item.id) == true
     }
+
     private var filteredItems: [GowithItem] {
         guard let selectedCategoryID else { return items }
         return items.filter { $0.categoryID == selectedCategoryID }
     }
 
+    /// 全部 = 按分类分组；选中分类 = 单组。组名「货架 · X」。
+    private var groups: [(id: String, title: String, items: [GowithItem])] {
+        if let selectedCategoryID {
+            let category = categories.first(where: { $0.id == selectedCategoryID })
+            return [(id: selectedCategoryID.uuidString, title: category?.name ?? "未分类", items: filteredItems)]
+        }
+        var groups: [(id: String, title: String, items: [GowithItem])] = []
+        for category in categories {
+            let categoryItems = items.filter { $0.categoryID == category.id }
+            if !categoryItems.isEmpty {
+                groups.append((id: category.id.uuidString, title: category.name, items: categoryItems))
+            }
+        }
+        let uncategorized = items.filter { item in
+            item.categoryID == nil && !categories.contains(where: { $0.id == item.categoryID })
+        }
+        if !uncategorized.isEmpty {
+            groups.append((id: "uncategorized", title: "未分类", items: uncategorized))
+        }
+        return groups
+    }
+
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    GowithTopBar(pageTitle: "物品库") {
-                        Menu {
-                            Button("添加物品", systemImage: "plus") { showItemEditor = true }
-                                .disabled(!canManageSelectedPlace)
-                            Button("添加分类", systemImage: "folder.badge.plus") { showCategoryEditor = true }
-                        } label: {
-                            Image(systemName: "ellipsis")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(GowithColor.primary)
-                                .frame(width: 44, height: 44)
-                                .background(GowithColor.surface, in: Circle())
-                        }
-                        .accessibilityLabel("物品库操作")
-                    }
-                    GowithContextStrip()
-                    libraryFocus
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("\(items.count) 件物品")
-                            .font(.footnote.weight(.medium))
-                            .foregroundStyle(GowithColor.secondary)
-                        Spacer()
-                        Text(selectedBackpack.map { "装入：\($0.name)" } ?? "请先选择背包")
-                            .font(.footnote.weight(.medium))
-                            .foregroundStyle(GowithColor.tertiary)
-                            .lineLimit(1)
-                    }
-                    locationGate
-                    if selectedBackpack == nil {
-                        noBackpackState
-                    } else {
-                        categoryBar
-                        itemList
-                    }
-                }
-                .padding(.horizontal, GowithMetrics.pagePadding)
-                .padding(.top, 20)
-                .padding(.bottom, 24)
-            }
-            .scrollIndicators(.hidden)
-            .background(GowithColor.appBackground)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if selectedBackpack != nil {
-                    GowithBottomAction(title: "开始出行", systemImage: "figure.walk", action: onStartOuting)
-                        .disabled(!canManageSelectedPlace)
-                        .opacity(canManageSelectedPlace ? 1 : 0.45)
-                        .padding(.horizontal, GowithMetrics.pagePadding)
-                        .padding(.top, 12)
-                        .padding(.bottom, 8)
-                        .background(GowithColor.appBackground)
-                }
-            }
-            .sheet(isPresented: $showCategoryEditor) {
-                CategoryEditorView(onSave: { selectedCategoryID = $0.id })
-            }
-            .sheet(item: $editingCategory) { category in CategoryEditorView(category: category) }
-            .sheet(isPresented: $showItemEditor) {
-                ItemEditorView(initialCategoryID: selectedCategoryID, allowsUncategorized: selectedCategoryID == nil)
-            }
-            .sheet(item: $editingItem) { item in
-                ItemEditorView(item: item)
-            }
-            .onChange(of: categories.count) { _, _ in
-                if let selectedCategoryID, !categories.contains(where: { $0.id == selectedCategoryID }) {
-                    self.selectedCategoryID = categories.first?.id
-                }
-            }
-        }
-    }
+        ScrollView {
+            VStack(spacing: GowithMetrics.moduleSpacing) {
+                AssetCard(
+                    header: "物品库",
+                    headerEN: "INVENTORY",
+                    badge: "全部 \(categories.count) 类",
+                    leftValue: "\(items.count)",
+                    leftUnit: "件",
+                    leftLabel: "物品库总数",
+                    rightValue: "\(packedCount)",
+                    rightUnit: "件",
+                    rightLabel: "已装入背包",
+                    ctaPlain: "点 ",
+                    ctaAccent: "+ 装包",
+                    texture: .flow
+                )
 
-    private var categoryBar: some View {
-        GowithCategoryRail(
-            categories: [(id: nil, name: "全部", icon: "square.grid.2x2.fill")] + categories.map {
-                (id: Optional($0.id), name: String($0.name.prefix(4)), icon: $0.symbolName)
-            },
-            selectedID: $selectedCategoryID
-        )
-        .contextMenu {
-            ForEach(categories) { category in
-                Button("编辑\(category.name)", systemImage: "pencil") { editingCategory = category }
-            }
-        }
-    }
+                locationStatus
 
-    private var libraryFocus: some View {
-        GowithFocusField(color: GowithColor.sceneMint, height: 170) {
-            HStack(spacing: 4) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("为这个背包准备")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(GowithColor.primary.opacity(0.62))
-                    Text(selectedBackpack?.name ?? "选择一个背包")
-                        .font(.title2.weight(.bold))
-                        .foregroundStyle(GowithColor.primary)
-                        .lineLimit(2)
-                    Text("已选 \(selectedBackpack?.itemIDs.count ?? 0) 件 · 物品库 \(items.count) 件")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(GowithColor.primary.opacity(0.72))
-                }
-                Spacer(minLength: 0)
-                if let selectedBackpack {
-                    GowithBackpackPreview(backpack: selectedBackpack, size: 118)
-                        .background(.white.opacity(0.22), in: Circle())
-                        .accessibilityHidden(true)
+                CategoryChips(
+                    chips: [CategoryChips.Chip(id: nil, name: "全部", systemImage: "square.grid.2x2")]
+                        + categories.map { CategoryChips.Chip(id: $0.id, name: String($0.name.prefix(4)), systemImage: $0.symbolName) },
+                    selection: $selectedCategoryID,
+                    trailingNew: { editingCategory = nil; showCategoryEditor = true },
+                    onEditChip: { id in
+                        guard let category = categories.first(where: { $0.id == id }) else { return }
+                        editingCategory = category
+                        showCategoryEditor = true
+                    }
+                )
+
+                if items.isEmpty {
+                    emptyState
+                } else if filteredItems.isEmpty {
+                    ContentCard {
+                        Text("这个分类还没有物品，点 + 添加。")
+                            .font(.system(size: 11))
+                            .foregroundStyle(GowithColor.inkTertiary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, 14)
+                    }
                 } else {
-                    Image(systemName: "backpack.fill")
-                        .font(.system(size: 66, weight: .regular))
-                        .foregroundStyle(GowithColor.primary.opacity(0.76))
+                    ForEach(groups, id: \.id) { group in
+                        shelfCard(group.title, items: group.items)
+                    }
                 }
+
+                addNewItemEntry
             }
-            .padding(20)
+            .padding(.horizontal, GowithMetrics.pagePadding)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
         }
-    }
-
-    private var itemList: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(selectedCategoryName)
-                    .font(.headline)
-                    .foregroundStyle(GowithColor.primary)
-                Spacer()
-                Text("\(filteredItems.count) 件")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(GowithColor.tertiary)
-            }
-
-            if items.isEmpty {
-                VStack(spacing: 10) {
-                    VStack(spacing: 10) {
-                        Image(systemName: "archivebox").font(.system(size: 25, weight: .light))
-                        Text("还没有物品").font(.headline)
-                            Button("添加物品") { showItemEditor = true }
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(GowithColor.primary)
-                                .disabled(!canManageSelectedPlace)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-                }
-            } else if filteredItems.isEmpty {
-                VStack(spacing: 10) {
-                    VStack(spacing: 10) {
-                        Image(systemName: "archivebox").font(.system(size: 25, weight: .light))
-                        Text("这个分类还没有物品").font(.headline)
-                        Button("添加物品") { showItemEditor = true }
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(GowithColor.primary)
-                            .disabled(!canManageSelectedPlace)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-                }
-            } else {
-                ForEach(Array(filteredItems.enumerated()), id: \.element.id) { index, item in
-                    let isPacked = selectedBackpack?.itemIDs.contains(item.id) == true
-                    LibraryItemRow(item: item, isPacked: isPacked) {
-                        guard let selectedBackpack else { return }
-                        guard canManageSelectedPlace else { return }
-                        store.toggleItem(item, in: selectedBackpack)
-                    }
-                    .opacity(canManageSelectedPlace ? 1 : 0.62)
-                    .contextMenu {
-                        if let category = categories.first(where: { $0.id == item.categoryID }) {
-                            Button("编辑分类", systemImage: "folder") { editingCategory = category }
-                        }
-                        Button("编辑", systemImage: "pencil") { editingItem = item }
-                            .disabled(!canManageSelectedPlace)
-                        Button("归档", systemImage: "archivebox", role: .destructive) {
-                            item.isArchived = true
-                            store.save()
-                        }
-                        .disabled(!canManageSelectedPlace)
-                    }
-                    if index < filteredItems.count - 1 { Divider().padding(.leading, 66) }
+        .scrollIndicators(.hidden)
+        .background(GowithColor.appBackground)
+        .sheet(isPresented: $showAddItem) {
+            ItemEditorView(initialCategoryID: selectedCategoryID) { savedItem, isNew in
+                guard isNew else { return }
+                highlightedItemID = savedItem.id
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 700_000_000)
+                    highlightedItemID = nil
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var selectedCategoryName: String {
-        guard let selectedCategoryID else { return "全部物品" }
-        return categories.first(where: { $0.id == selectedCategoryID })?.name ?? "全部物品"
-    }
-
-    private var noBackpackState: some View {
-        GowithCard {
-            VStack(spacing: 12) {
-                Image(systemName: "backpack").font(.system(size: 32, weight: .light))
-                Text("请先选择背包").font(.headline)
-                Text("选择一个背包后，才能为它装入物品。")
-                    .font(.body).foregroundStyle(GowithColor.secondary).multilineTextAlignment(.center)
-                GowithSecondaryButton(title: "返回背包页", systemImage: "backpack.fill", action: onOpenBackpack)
-                    .padding(.top, 4)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 24)
+        .sheet(item: $editingItem) { item in
+            ItemEditorView(item: item)
+        }
+        .sheet(isPresented: $showCategoryEditor) {
+            CategoryEditorView(category: editingCategory)
         }
     }
 
     @ViewBuilder
-    private var locationGate: some View {
+    private var locationStatus: some View {
         if locationService.needsPermissionRecovery {
             GowithLocationRecoveryBanner()
-        } else if let selectedPlace {
-            GowithInlineStatus(
-                title: canManageSelectedPlace ? "已在「\(selectedPlace.name)」范围内，可以管理物品" : "到达「\(selectedPlace.name)」约 50 米范围内可管理物品",
-                systemImage: canManageSelectedPlace ? "location.fill" : "lock.fill",
-                isPositive: canManageSelectedPlace
+        } else if let place = store.selectedPlace, !canManage {
+            FenceGateNote(placeName: place.name)
+        }
+    }
+
+    private func shelfCard(_ title: String, items: [GowithItem]) -> some View {
+        ContentCard(padding: 10) {
+            VStack(spacing: 0) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("货架 · \(title)")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(GowithColor.inkSecondary)
+                    Spacer()
+                    Text("\(items.count) 件")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(GowithColor.inkTertiary)
+                }
+                .padding(.horizontal, 4)
+                .padding(.bottom, 4)
+
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                    let packed = store.selectedBackpack?.itemIDs.contains(item.id) == true
+                    ShelfRow(
+                        item: item,
+                        placeName: packed ? nil : store.place(for: item.placeID)?.name,
+                        isPacked: packed,
+                        isEditable: isManageable(item),
+                        highlight: highlightedItemID == item.id,
+                        onTogglePack: { onPack(item) },
+                        onEdit: { editingItem = item }
+                    )
+                    .contextMenu {
+                        Button("编辑物品", systemImage: "pencil") { editingItem = item }
+                            .disabled(!isManageable(item))
+                        if let category = categories.first(where: { $0.id == item.categoryID }) {
+                            Button("编辑分类「\(category.name)」", systemImage: "folder") { editingCategory = category }
+                        }
+                    }
+                    if index < items.count - 1 {
+                        Divider().padding(.leading, 62)
+                    }
+                }
+            }
+        }
+    }
+
+    private var addNewItemEntry: some View {
+        Button {
+            showAddItem = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus")
+                    .font(.system(size: 12, weight: .bold))
+                Text("添加新物品…")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(GowithColor.inkSecondary)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(
+                RoundedRectangle(cornerRadius: GowithMetrics.contentCardRadius, style: .continuous)
+                    .strokeBorder(GowithColor.inkTertiary.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
             )
-        } else {
-            GowithInlineStatus(title: "请先选择一个地点", systemImage: "mappin.slash")
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("打开添加物品页")
+    }
+
+    private var emptyState: some View {
+        ContentCard {
+            VStack(spacing: 8) {
+                Image(systemName: "archivebox")
+                    .font(.system(size: 28, weight: .light))
+                    .foregroundStyle(GowithColor.inkTertiary)
+                Text("还没有物品")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(GowithColor.ink)
+                Text("点下方「添加新物品」，把常用物品放进货架。")
+                    .font(.system(size: 11))
+                    .foregroundStyle(GowithColor.inkSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 22)
         }
     }
 }
 
-struct LibraryItemRow: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let item: GowithItem
-    let isPacked: Bool
-    let action: () -> Void
+// MARK: - 共享图标选择卡（S1 物品 / S3 背包复用，规格 5.7）
+
+struct IconPickerSection: View {
+    @Binding var imageData: Data?
+    @Binding var symbolName: String
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var showCamera = false
 
     var body: some View {
-        GowithInventoryRow(
-            item: item,
-            stateTitle: isPacked ? "已携带" : "未携带",
-            stateIcon: isPacked ? "checkmark.circle.fill" : "circle",
-            actionTitle: isPacked ? "从当前背包移除\(item.name)" : "加入当前背包\(item.name)",
-            actionIcon: isPacked ? "minus" : "plus",
-            action: {
-                GowithHaptics.selection()
-                action()
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                ItemThumbnail(data: imageData, fileName: nil, symbolName: symbolName, size: 52)
+                    .background(GowithColor.softSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("照片")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(GowithColor.inkSecondary)
+                    HStack(spacing: 8) {
+                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                            Label("从相册选择", systemImage: "photo")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(GowithColor.ink)
+                                .padding(.horizontal, 10)
+                                .frame(minHeight: 30)
+                                .background(GowithColor.softSurface, in: Capsule())
+                        }
+                        Button {
+                            showCamera = true
+                        } label: {
+                            Label("拍摄", systemImage: "camera")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(GowithColor.ink)
+                                .padding(.horizontal, 10)
+                                .frame(minHeight: 30)
+                                .background(GowithColor.softSurface, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        if imageData != nil {
+                            Button("移除照片") { imageData = nil }
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(GowithColor.accent)
+                        }
+                    }
+                }
+                Spacer(minLength: 0)
             }
-        )
-        .opacity(isPacked ? 0.82 : 1)
-        .animation(reduceMotion ? nil : GowithMotion.row, value: isPacked)
+
+            Divider().padding(.vertical, 2)
+
+            Text("3D 图标")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(GowithColor.inkSecondary)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 8) {
+                ForEach(Gowith3DIconOption.all) { option in
+                    Button {
+                        symbolName = option.id
+                        imageData = nil
+                    } label: {
+                        VStack(spacing: 3) {
+                            Gowith3DIcon(option: option, size: 38)
+                            Text(option.title)
+                                .font(.system(size: 9))
+                                .foregroundStyle(GowithColor.inkSecondary)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 60)
+                        .background(
+                            symbolName == option.id && imageData == nil
+                                ? RoundedRectangle(cornerRadius: 12, style: .continuous).fill(GowithColor.softSurface)
+                                : RoundedRectangle(cornerRadius: 12, style: .continuous).fill(GowithColor.softSurface.opacity(0.5))
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(symbolName == option.id && imageData == nil ? GowithColor.ink : .clear, lineWidth: 1.5).allowsHitTesting(false)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("选择3D图标：\(option.title)")
+                }
+            }
+
+            Divider().padding(.vertical, 2)
+
+            Text("系统图标")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(GowithColor.inkSecondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(symbolOptions, id: \.self) { symbol in
+                        Button {
+                            symbolName = symbol
+                            imageData = nil
+                        } label: {
+                            Image(systemName: symbol)
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundStyle(symbolName == symbol && imageData == nil ? GowithColor.onPrimary : GowithColor.ink)
+                                .frame(width: 40, height: 40)
+                                .background(symbolName == symbol && imageData == nil ? GowithColor.ink : GowithColor.softSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+        .task(id: selectedPhoto) {
+            guard let selectedPhoto, let data = try? await selectedPhoto.loadTransferable(type: Data.self) else { return }
+            imageData = data
+        }
+        .sheet(isPresented: $showCamera) { CameraPicker(imageData: $imageData) }
+    }
+
+    private let symbolOptions = ["square.dashed", "iphone", "key.fill", "wallet.pass.fill", "airpods", "battery.100percent", "umbrella.fill", "book.fill", "pill.fill", "eyeglasses", "laptopcomputer", "creditcard.fill"]
+}
+
+// MARK: - S1 添加/编辑物品（规格 5.7，对应现有 ItemEditorView 重写）
+
+struct ItemEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: GowithStore
+    let item: GowithItem?
+    let initialCategoryID: UUID?
+    var onSaved: ((GowithItem, Bool) -> Void)? = nil
+
+    @State private var name: String
+    @State private var symbolName: String
+    @State private var imageData: Data?
+    @State private var categoryID: UUID?
+    @State private var editingCategory: GowithCategory?
+    @State private var showNewCategory = false
+    @State private var showArchiveConfirm = false
+    @FocusState private var nameFocused: Bool
+
+    init(item: GowithItem? = nil, initialCategoryID: UUID? = nil, onSaved: ((GowithItem, Bool) -> Void)? = nil) {
+        self.item = item
+        self.initialCategoryID = initialCategoryID
+        self.onSaved = onSaved
+        _name = State(initialValue: item?.name ?? "")
+        _symbolName = State(initialValue: item?.symbolName ?? "square.dashed")
+        _imageData = State(initialValue: LocalImageStore.load(fileName: item?.imageFileName))
+        _categoryID = State(initialValue: item?.categoryID ?? initialCategoryID)
+    }
+
+    private var saveEnabled: Bool { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SheetNavBar(
+                title: item == nil ? "添加物品" : "编辑物品",
+                saveEnabled: saveEnabled,
+                onCancel: { dismiss() },
+                onSave: { save() }
+            )
+            ScrollView {
+                VStack(spacing: GowithMetrics.moduleSpacing) {
+                    ContentCard {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("名称")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(GowithColor.inkSecondary)
+                            TextField("例如：钥匙、工卡…", text: $name)
+                                .font(.system(size: 15, weight: .medium))
+                                .focused($nameFocused)
+                                .submitLabel(.done)
+                        }
+                    }
+
+                    ContentCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("分类")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(GowithColor.inkSecondary)
+                            CategoryChips(
+                                chips: [CategoryChips.Chip(id: nil, name: "未分类")]
+                                    + store.sortedCategories.map { CategoryChips.Chip(id: $0.id, name: String($0.name.prefix(4))) },
+                                selection: $categoryID,
+                                trailingNew: { showNewCategory = true }
+                            )
+                        }
+                    }
+
+                    ContentCard {
+                        IconPickerSection(imageData: $imageData, symbolName: $symbolName)
+                    }
+
+                    if item != nil {
+                        Button {
+                            showArchiveConfirm = true
+                        } label: {
+                            Text("归档物品")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(GowithColor.accent)
+                                .frame(maxWidth: .infinity, minHeight: 40)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 20)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .background(GowithColor.appBackground)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.hidden)
+        .onAppear {
+            if item == nil { nameFocused = true }
+        }
+        .sheet(item: $editingCategory) { category in
+            CategoryEditorView(category: category)
+        }
+        .sheet(isPresented: $showNewCategory) {
+            CategoryEditorView()
+        }
+        .confirmationDialog("归档这件物品？", isPresented: $showArchiveConfirm, titleVisibility: .visible) {
+            Button("归档", role: .destructive) {
+                item?.isArchived = true
+                store.save()
+                dismiss()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("归档后物品不再出现在货架。")
+        }
+    }
+
+    private func save() {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+        let newFileName = imageData.flatMap(LocalImageStore.save(data:))
+        if let item {
+            if let newFileName {
+                LocalImageStore.delete(fileName: item.imageFileName)
+                item.imageFileName = newFileName
+            } else if imageData == nil {
+                LocalImageStore.delete(fileName: item.imageFileName)
+                item.imageFileName = nil
+            }
+            item.name = trimmedName
+            item.symbolName = symbolName
+            item.categoryID = categoryID
+            onSaved?(item, false)
+        } else {
+            let newItem = GowithItem(name: trimmedName, symbolName: symbolName, imageFileName: newFileName, categoryID: categoryID, placeID: store.selectedPlaceID)
+            store.items.append(newItem)
+            onSaved?(newItem, true)
+        }
+        store.save()
+        dismiss()
     }
 }
+
+// MARK: - S2 新建/编辑分类（规格 5.7，行内小弹层）
 
 struct CategoryEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: GowithStore
     let category: GowithCategory?
     var onSave: ((GowithCategory) -> Void)? = nil
+
     @State private var name: String
     @State private var symbolName: String
 
@@ -287,61 +493,104 @@ struct CategoryEditorView: View {
         _symbolName = State(initialValue: category?.symbolName ?? "square.grid.2x2.fill")
     }
 
+    private var saveEnabled: Bool { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("分类名称") {
-                    TextField("最多四个字", text: $name)
-                        .onChange(of: name) { _, value in
-                            if value.count > 4 { name = String(value.prefix(4)) }
+        VStack(spacing: 0) {
+            SheetNavBar(
+                title: category == nil ? "新建分类" : "编辑分类",
+                saveEnabled: saveEnabled,
+                onCancel: { dismiss() },
+                onSave: { save() }
+            )
+            ScrollView {
+                VStack(spacing: GowithMetrics.moduleSpacing) {
+                    ContentCard {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("分类名称（最多 4 字）")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(GowithColor.inkSecondary)
+                            TextField("例如：洗护", text: $name)
+                                .font(.system(size: 15, weight: .medium))
+                                .onChange(of: name) { _, value in
+                                    if value.count > 4 { name = String(value.prefix(4)) }
+                                }
                         }
-                }
-                Section("分类图标") {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 12) {
-                        ForEach(symbolOptions, id: \.self) { symbol in
-                            Button { symbolName = symbol } label: {
-                                Image(systemName: symbol)
-                                    .font(.system(size: 20))
-                                    .foregroundStyle(symbolName == symbol ? .white : GowithColor.primary)
-                                    .frame(maxWidth: .infinity, minHeight: 48)
-                                    .background(symbolName == symbol ? GowithColor.primary : GowithColor.softSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+
+                    ContentCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("分类图标")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(GowithColor.inkSecondary)
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 8) {
+                                ForEach(symbolOptions, id: \.self) { symbol in
+                                    Button { symbolName = symbol } label: {
+                                        Image(systemName: symbol)
+                                            .font(.system(size: 17, weight: .medium))
+                                            .foregroundStyle(symbolName == symbol ? GowithColor.onPrimary : GowithColor.ink)
+                                            .frame(maxWidth: .infinity, minHeight: 44)
+                                            .background(symbolName == symbol ? GowithColor.ink : GowithColor.softSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+
+                    if category != nil {
+                        HStack(spacing: 10) {
+                            Button {
+                                move(category!, by: -1)
+                            } label: {
+                                Label("上移", systemImage: "arrow.up")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .frame(maxWidth: .infinity, minHeight: 38)
+                                    .background(GowithColor.softSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            Button {
+                                move(category!, by: 1)
+                            } label: {
+                                Label("下移", systemImage: "arrow.down")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .frame(maxWidth: .infinity, minHeight: 38)
+                                    .background(GowithColor.softSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            Button {
+                                delete(category!)
+                            } label: {
+                                Label("删除", systemImage: "trash")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(GowithColor.accent)
+                                    .frame(maxWidth: .infinity, minHeight: 38)
+                                    .background(GowithColor.softSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
                             .buttonStyle(.plain)
                         }
+                        Text("删除分类后，其物品归为「未分类」。")
+                            .font(.system(size: 10))
+                            .foregroundStyle(GowithColor.inkTertiary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 20)
             }
-            .scrollContentBackground(.hidden)
-            .background(GowithColor.appBackground)
-            .navigationTitle(category == nil ? "添加分类" : "编辑分类")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") { save() }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-            .safeAreaInset(edge: .bottom) {
-                if let category {
-                    HStack {
-                        Button("上移", systemImage: "arrow.up") { move(category, by: -1) }
-                        Spacer()
-                        Button("下移", systemImage: "arrow.down") { move(category, by: 1) }
-                        Spacer()
-                        Button("删除", systemImage: "trash", role: .destructive) { delete(category) }
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 12)
-                    .background(GowithColor.surface)
-                }
-            }
+            .scrollIndicators(.hidden)
         }
+        .background(GowithColor.appBackground)
+        .presentationDetents([.height(420)])
+        .presentationDragIndicator(.hidden)
     }
 
-    private let symbolOptions = ["square.grid.2x2.fill", "sun.max.fill", "bolt.fill", "person.text.rectangle.fill", "briefcase.fill", "house.fill", "heart.fill", "ellipsis"]
+    private let symbolOptions = ["square.grid.2x2.fill", "sun.max.fill", "bolt.fill", "person.text.rectangle.fill", "briefcase.fill", "house.fill", "heart.fill", "book.fill"]
 
     private func save() {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
         if let category {
             category.name = trimmedName
             category.symbolName = symbolName
@@ -375,163 +624,246 @@ struct CategoryEditorView: View {
     }
 }
 
-struct ItemEditorView: View {
+// MARK: - S3 背包选择（规格 5.7）
+
+struct BackpackPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: GowithStore
-    let item: GowithItem?
-    let initialCategoryID: UUID?
-    let allowsUncategorized: Bool
-    @State private var name: String
-    @State private var symbolName: String
-    @State private var categoryID: UUID?
-    @State private var selectedPhoto: PhotosPickerItem?
-    @State private var imageData: Data?
-    @State private var showCamera = false
+    @State private var showNewBackpack = false
+    @State private var editingBackpack: GowithBackpack?
+    @State private var backpackToDelete: GowithBackpack?
+    @State private var showDeleteConfirm = false
 
-    init(item: GowithItem? = nil, initialCategoryID: UUID? = nil, allowsUncategorized: Bool = true) {
-        self.item = item
-        self.initialCategoryID = initialCategoryID
-        self.allowsUncategorized = allowsUncategorized
-        _name = State(initialValue: item?.name ?? "")
-        _symbolName = State(initialValue: item?.symbolName ?? "square.dashed")
-        _categoryID = State(initialValue: item?.categoryID ?? initialCategoryID)
-        _imageData = State(initialValue: LocalImageStore.load(fileName: item?.imageFileName))
-    }
+    private var backpacks: [GowithBackpack] { store.visibleBackpacks }
+    private var current: GowithBackpack? { store.selectedBackpack }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("基本信息") {
-                    TextField("物品名称", text: $name)
-                    if allowsUncategorized || item != nil {
-                        Picker("分类", selection: $categoryID) {
-                            Text("未分类").tag(nil as UUID?)
-                            ForEach(store.categories) { category in
-                                Text(category.name).tag(category.id as UUID?)
-                            }
-                        }
-                    } else if let initialCategoryID, let category = store.categories.first(where: { $0.id == initialCategoryID }) {
-                        LabeledContent("分类", value: category.name)
-                    }
-                }
-                Section("图标") {
-                    HStack {
-                        ItemThumbnail(data: imageData, fileName: nil, symbolName: symbolName, size: 64)
-                        Spacer()
-                        PhotosPicker(selection: $selectedPhoto, matching: .images) { Label("从相册选择", systemImage: "photo") }
-                        Button { showCamera = true } label: { Label("拍摄", systemImage: "camera") }
-                    }
-                    if imageData != nil {
-                        Button("使用 SF Symbol") { imageData = nil }
-                    }
-                    Text("3D 图标").font(.subheadline.weight(.medium))
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 10) {
-                        ForEach(Gowith3DIconOption.all) { option in
-                            Button {
-                                symbolName = option.id
-                                imageData = nil
-                            } label: {
-                                VStack(spacing: 4) {
-                                    Gowith3DIcon(option: option, size: 42)
-                                    Text(option.title).font(.caption2).lineLimit(1)
+        VStack(spacing: 0) {
+            SheetNavBar(
+                title: "选择背包",
+                saveTitle: "完成",
+                saveEnabled: true,
+                onCancel: { dismiss() },
+                onSave: { dismiss() }
+            )
+            ScrollView {
+                VStack(spacing: GowithMetrics.moduleSpacing) {
+                    if let current {
+                        ContentCard {
+                            HStack(spacing: 12) {
+                                GowithBackpackPreview(backpack: current, size: 52)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack(spacing: 6) {
+                                        Text(current.name)
+                                            .font(.system(size: 14, weight: .bold))
+                                            .foregroundStyle(GowithColor.ink)
+                                        Text("当前")
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundStyle(GowithColor.onPrimary)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(GowithColor.ink, in: Capsule())
+                                    }
+                                    Text("已装 \(current.itemIDs.count) 件 · 在「\(store.place(for: current.placeID)?.name ?? "未设置地点")」")
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundStyle(GowithColor.inkTertiary)
                                 }
-                                .frame(maxWidth: .infinity, minHeight: 70)
-                                .background(symbolName == option.id && imageData == nil ? GowithColor.success : GowithColor.softSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                Spacer(minLength: 0)
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("选择3D图标：\(option.title)")
                         }
                     }
-                    Text("系统图标").font(.subheadline.weight(.medium))
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(symbolOptions, id: \.self) { symbol in
-                                Button { symbolName = symbol; imageData = nil } label: {
-                                    Image(systemName: symbol)
-                                        .font(.system(size: 20))
-                                        .foregroundStyle(symbolName == symbol && imageData == nil ? .white : GowithColor.primary)
-                                        .frame(width: 44, height: 44)
-                                        .background(symbolName == symbol && imageData == nil ? GowithColor.primary : GowithColor.softSurface)
-                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                    sectionTitle("全部背包 · \(backpacks.count) 个")
+
+                    ContentCard(padding: 8) {
+                        VStack(spacing: 0) {
+                            ForEach(Array(backpacks.enumerated()), id: \.element.id) { index, backpack in
+                                backpackRow(backpack)
+                                    .contextMenu {
+                                        Button("编辑", systemImage: "pencil") { editingBackpack = backpack }
+                                        Button("删除", systemImage: "trash", role: .destructive) {
+                                            backpackToDelete = backpack
+                                            showDeleteConfirm = true
+                                        }
+                                        .disabled(store.activeSession?.backpackID == backpack.id)
+                                    }
+                                if index < backpacks.count - 1 {
+                                    Divider().padding(.leading, 58)
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                     }
+
+                    Button {
+                        showNewBackpack = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("新建背包")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundStyle(GowithColor.inkSecondary)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(
+                            RoundedRectangle(cornerRadius: GowithMetrics.contentCardRadius, style: .continuous)
+                                .strokeBorder(GowithColor.inkTertiary.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    NoteCard(lines: ["点背包行切换；长按可改名 / 删除。", "出行中的背包不可删除。"])
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 20)
             }
-            .scrollContentBackground(.hidden)
-            .background(GowithColor.appBackground)
-            .navigationTitle(item == nil ? "添加物品" : "编辑物品")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") { save() }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
+            .scrollIndicators(.hidden)
+        }
+        .background(GowithColor.appBackground)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.hidden)
+        .sheet(isPresented: $showNewBackpack) { BackpackEditorView() }
+        .sheet(item: $editingBackpack) { backpack in BackpackEditorView(backpack: backpack) }
+        .confirmationDialog("删除这个背包？", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("删除背包", role: .destructive) {
+                if let backpackToDelete { delete(backpackToDelete) }
             }
-            .task(id: selectedPhoto) {
-                guard let selectedPhoto, let data = try? await selectedPhoto.loadTransferable(type: Data.self) else { return }
-                imageData = data
-            }
-            .sheet(isPresented: $showCamera) { CameraPicker(imageData: $imageData) }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("只会删除背包及其装包清单，不会删除物品库中的物品。")
         }
     }
 
-    private let symbolOptions = ["square.dashed", "iphone", "key.fill", "wallet.pass.fill", "airpods", "battery.100percent", "umbrella.fill", "book.fill", "pill.fill", "glasses", "laptopcomputer", "creditcard.fill"]
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(GowithColor.inkSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 4)
+    }
+
+    private func backpackRow(_ backpack: GowithBackpack) -> some View {
+        let isSelected = backpack.id == current?.id
+        return Button {
+            store.selectBackpack(backpack)
+            GowithHaptics.selection()
+        } label: {
+            HStack(spacing: 12) {
+                GowithBackpackPreview(backpack: backpack, size: 38)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(backpack.name)
+                        .font(GowithFont.rowTitle)
+                        .foregroundStyle(GowithColor.ink)
+                    Text("\(backpack.itemIDs.count) 件 · 在「\(store.place(for: backpack.placeID)?.name ?? "未设置地点")」")
+                        .font(GowithFont.rowSubtitle)
+                        .foregroundStyle(GowithColor.inkTertiary)
+                }
+                Spacer(minLength: 8)
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(GowithColor.ink)
+                        .frame(width: 44, height: 44)
+                }
+            }
+            .padding(.horizontal, 6)
+            .frame(minHeight: GowithMetrics.rowHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("选择背包：\(backpack.name)")
+    }
+
+    private func delete(_ backpack: GowithBackpack) {
+        // 进行中的出行会话引用该背包时禁止删除，避免会话数据悬空。
+        guard store.activeSession?.backpackID != backpack.id else { return }
+        LocalImageStore.delete(fileName: backpack.imageFileName)
+        store.backpacks.removeAll { $0.id == backpack.id }
+        if store.selectedBackpackID == backpack.id { store.selectedBackpackID = store.visibleBackpacks.first?.id }
+        store.save()
+    }
+}
+
+// MARK: - 新建/编辑背包（S3 底部入口，复用 S1 图标卡）
+
+struct BackpackEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: GowithStore
+    let backpack: GowithBackpack?
+
+    @State private var name: String
+    @State private var symbolName: String
+    @State private var imageData: Data?
+
+    init(backpack: GowithBackpack? = nil) {
+        self.backpack = backpack
+        _name = State(initialValue: backpack?.name ?? "")
+        _symbolName = State(initialValue: backpack?.symbolName ?? "gowith3d.backpack")
+        _imageData = State(initialValue: LocalImageStore.load(fileName: backpack?.imageFileName))
+    }
+
+    private var saveEnabled: Bool { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SheetNavBar(
+                title: backpack == nil ? "新建背包" : "编辑背包",
+                saveEnabled: saveEnabled,
+                onCancel: { dismiss() },
+                onSave: { save() }
+            )
+            ScrollView {
+                VStack(spacing: GowithMetrics.moduleSpacing) {
+                    ContentCard {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("背包名称")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(GowithColor.inkSecondary)
+                            TextField("例如：通勤包", text: $name)
+                                .font(.system(size: 15, weight: .medium))
+                        }
+                    }
+                    ContentCard {
+                        IconPickerSection(imageData: $imageData, symbolName: $symbolName)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 20)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .background(GowithColor.appBackground)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.hidden)
+    }
 
     private func save() {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
         let newFileName = imageData.flatMap(LocalImageStore.save(data:))
-        if let item {
+        if let backpack {
+            backpack.name = trimmedName
+            backpack.symbolName = symbolName
             if let newFileName {
-                LocalImageStore.delete(fileName: item.imageFileName)
-                item.imageFileName = newFileName
+                LocalImageStore.delete(fileName: backpack.imageFileName)
+                backpack.imageFileName = newFileName
             } else if imageData == nil {
-                LocalImageStore.delete(fileName: item.imageFileName)
-                item.imageFileName = nil
+                LocalImageStore.delete(fileName: backpack.imageFileName)
+                backpack.imageFileName = nil
             }
-            item.name = trimmedName
-            item.symbolName = symbolName
-            item.categoryID = categoryID
         } else {
-            store.items.append(GowithItem(name: trimmedName, symbolName: symbolName, imageFileName: newFileName, categoryID: categoryID, placeID: store.selectedPlaceID))
+            let newBackpack = GowithBackpack(name: trimmedName, symbolName: symbolName, imageFileName: newFileName, placeID: store.selectedPlaceID)
+            store.backpacks.append(newBackpack)
+            if store.selectedBackpackID == nil || store.selectedPlaceID == newBackpack.placeID { store.selectedBackpackID = newBackpack.id }
         }
         store.save()
         dismiss()
     }
 }
 
-struct ItemThumbnail: View {
-    var data: Data? = nil
-    let fileName: String?
-    let symbolName: String
-    let size: CGFloat
-
-    init(data: Data? = nil, fileName: String?, symbolName: String, size: CGFloat) {
-        self.data = data
-        self.fileName = fileName
-        self.symbolName = symbolName
-        self.size = size
-    }
-
-    var body: some View {
-        Group {
-            if let data, let image = UIImage(data: data) {
-                Image(uiImage: image).resizable().scaledToFill()
-            } else if let image = LocalImageStore.cachedImage(fileName: fileName) {
-                Image(uiImage: image).resizable().scaledToFill()
-            } else if let option = Gowith3DIconOption.option(for: symbolName) {
-                Gowith3DIcon(option: option, size: size * 0.86)
-            } else {
-                Image(systemName: symbolName).font(.system(size: size * 0.38, weight: .medium)).foregroundStyle(GowithColor.primary)
-            }
-        }
-        .frame(width: size, height: size)
-        .background(GowithColor.softSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-}
+// MARK: - 相机拍摄（保留）
 
 struct CameraPicker: UIViewControllerRepresentable {
     @Environment(\.dismiss) private var dismiss
