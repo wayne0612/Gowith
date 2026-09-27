@@ -8,10 +8,11 @@ struct ProfilePage: View {
     @AppStorage("gowith.appMode") private var mode: AppMode = .basic
     @AppStorage("gowith.arrivalRemindersEnabled") private var arrivalRemindersEnabled = true
     @AppStorage("gowith.hapticsEnabled") private var hapticsEnabled = true
-    @AppStorage("gowith.hasSeenTutorial") private var hasSeenTutorial = false
+    @AppStorage("gowith.hasSeenGuidedTour") private var hasSeenGuidedTour = false
     @AppStorage("gowith.didCompleteSetup") private var didCompleteSetup = false
     @State private var showHistory = false
     @State private var showAbout = false
+    @State private var showManual = false
     @State private var showResetConfirm = false
 
     private var itemCount: Int { store.visibleItems.count }
@@ -90,7 +91,9 @@ struct ProfilePage: View {
                 }
 
                 settingGroup(title: "功能") {
-                    settingRow(icon: "play.rectangle", title: "重新观看引导动画", value: "") { hasSeenTutorial = false }
+                    settingRow(icon: "book.fill", title: "操作手册", value: "") { showManual = true }
+                    Divider().padding(.leading, 46)
+                    settingRow(icon: "hand.tap.fill", title: "重新观看引导动画", value: "") { hasSeenGuidedTour = false }
                     Divider().padding(.leading, 46)
                     settingRow(icon: "clock.arrow.circlepath", title: "历史记录", value: "\(completedCount) 次") { showHistory = true }
                     Divider().padding(.leading, 46)
@@ -142,6 +145,7 @@ struct ProfilePage: View {
         .background(GowithColor.appBackground)
         .sheet(isPresented: $showHistory) { HistoryPage() }
         .sheet(isPresented: $showAbout) { AboutView() }
+        .sheet(isPresented: $showManual) { ManualView() }
         .confirmationDialog("清空全部数据？", isPresented: $showResetConfirm, titleVisibility: .visible) {
             Button("清空全部数据", role: .destructive) {
                 store.resetAll()
