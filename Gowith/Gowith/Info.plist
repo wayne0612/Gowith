@@ -31,7 +31,10 @@
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>出发后，Gowith 需要在后台判断你是否进入已保存地点周边约 50 米范围，并提醒你确认物品。</string>
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>arm64</string>
