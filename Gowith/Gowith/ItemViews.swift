@@ -6,7 +6,6 @@ import SwiftUI
 struct LibraryPage: View {
     @EnvironmentObject private var store: GowithStore
     @EnvironmentObject private var locationService: LocationService
-    let onPack: (GowithItem) -> Void
 
     @State private var editingItem: GowithItem?
     @State private var showAddItem = false
@@ -20,7 +19,15 @@ struct LibraryPage: View {
 
     private var places: [GowithPlace] { store.places.sorted { $0.createdAt < $1.createdAt } }
     private var packedItems: [GowithItem] { store.packedItems(in: store.selectedBackpack) }
-    private var homeItemCount: Int { store.shelfItems.count }
+
+    /// 平时 = 当前家货架（在家物品 + 随身已装）；出行中 = 真正留在家里的物品数，
+    /// 避免与右指标「携带中」重复统计同一批随身物品。
+    private var homeItemCount: Int {
+        if store.activeSession != nil {
+            return store.visibleItems.filter { $0.placeID == store.selectedPlaceID }.count
+        }
+        return store.shelfItems.count
+    }
 
     var body: some View {
         ScrollView {
@@ -149,71 +156,71 @@ struct LibraryPage: View {
     private var currentBackpackCard: some View {
         ContentCard(padding: 12) {
             if let backpack = store.selectedBackpack {
-                Button {
-                    detailBackpack = backpack
-                } label: {
-                    VStack(spacing: 10) {
-                        HStack(spacing: 12) {
-                            GowithBackpackPreview(backpack: backpack, size: 46)
-                            VStack(alignment: .leading, spacing: 3) {
-                                HStack(spacing: 6) {
-                                    Text(backpack.name)
-                                        .font(GowithFont.rowTitle)
-                                        .foregroundStyle(GowithColor.ink)
-                                    Text("正在使用")
-                                        .font(.system(size: 9, weight: .bold))
-                                        .foregroundStyle(GowithColor.onPrimary)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(GowithColor.ink, in: Capsule())
-                                }
-                                Text(originText(for: backpack))
-                                    .font(GowithFont.rowSubtitle)
-                                    .foregroundStyle(GowithColor.inkTertiary)
-                            }
-                            Spacer(minLength: 8)
-                            Button {
-                                showBackpackPicker = true
-                            } label: {
-                                Text("换背包")
-                                    .font(.system(size: 11, weight: .semibold))
+                VStack(spacing: 10) {
+                    HStack(spacing: 12) {
+                        GowithBackpackPreview(backpack: backpack, size: 46)
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 6) {
+                                Text(backpack.name)
+                                    .font(GowithFont.rowTitle)
                                     .foregroundStyle(GowithColor.ink)
-                                    .padding(.horizontal, 11)
-                                    .frame(minHeight: 30)
+                                Text("正在使用")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(GowithColor.onPrimary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(GowithColor.ink, in: Capsule())
+                            }
+                            Text(originText(for: backpack))
+                                .font(GowithFont.rowSubtitle)
+                                .foregroundStyle(GowithColor.inkTertiary)
+                        }
+                        Spacer(minLength: 8)
+                        Button {
+                            showBackpackPicker = true
+                        } label: {
+                            Text("换背包")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(GowithColor.ink)
+                                .padding(.horizontal, 11)
+                                .frame(minHeight: 30)
+                                .background(GowithColor.softSurface, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(store.activeSession != nil)
+                        .accessibilityLabel("更换背包")
+                    }
+
+                    if !packedItems.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(Array(packedItems.prefix(6)), id: \.id) { item in
+                                    HStack(spacing: 5) {
+                                        ItemThumbnail(fileName: item.imageFileName, symbolName: item.symbolName, size: 20)
+                                        Text(item.name)
+                                            .font(.system(size: 10, weight: .medium))
+                                            .foregroundStyle(GowithColor.inkSecondary)
+                                            .lineLimit(1)
+                                    }
+                                    .padding(.leading, 4)
+                                    .padding(.trailing, 9)
+                                    .frame(minHeight: 28)
                                     .background(GowithColor.softSurface, in: Capsule())
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(store.activeSession != nil)
-                            .accessibilityLabel("更换背包")
-                        }
-
-                        if !packedItems.isEmpty {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 6) {
-                                    ForEach(Array(packedItems.prefix(6)), id: \.id) { item in
-                                        HStack(spacing: 5) {
-                                            ItemThumbnail(fileName: item.imageFileName, symbolName: item.symbolName, size: 20)
-                                            Text(item.name)
-                                                .font(.system(size: 10, weight: .medium))
-                                                .foregroundStyle(GowithColor.inkSecondary)
-                                                .lineLimit(1)
-                                        }
-                                        .padding(.leading, 4)
-                                        .padding(.trailing, 9)
-                                        .frame(minHeight: 28)
-                                        .background(GowithColor.softSurface, in: Capsule())
-                                    }
-                                    if packedItems.count > 6 {
-                                        Text("+\(packedItems.count - 6)")
-                                            .font(.system(size: 10, weight: .bold))
-                                            .foregroundStyle(GowithColor.inkTertiary)
-                                            .padding(.horizontal, 6)
-                                    }
                                 }
-                                .padding(.vertical, 1)
+                                if packedItems.count > 6 {
+                                    Text("+\(packedItems.count - 6)")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(GowithColor.inkTertiary)
+                                        .padding(.horizontal, 6)
+                                }
                             }
+                            .padding(.vertical, 1)
                         }
+                    }
 
+                    Button {
+                        detailBackpack = backpack
+                    } label: {
                         HStack {
                             Text("查看背包内容")
                                 .font(.system(size: 10.5, weight: .bold))
@@ -222,17 +229,16 @@ struct LibraryPage: View {
                                 .font(.system(size: 9, weight: .bold))
                                 .foregroundStyle(GowithColor.accent)
                             Spacer()
-                            Text("点卡片看每件的归属与属性")
+                            Text("看每件的归属与属性")
                                 .font(.system(size: 9.5))
                                 .foregroundStyle(GowithColor.inkTertiary)
                         }
+                        .frame(minHeight: 32)
+                        .contentShape(Rectangle())
                     }
-                    .padding(2)
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("查看背包内容：\(backpack.name)已装 \(packedItems.count) 件")
                 }
-                .buttonStyle(.plain)
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel("当前背包：\(backpack.name)，已装 \(packedItems.count) 件，\(originText(for: backpack))。双击查看背包内容")
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "backpack")

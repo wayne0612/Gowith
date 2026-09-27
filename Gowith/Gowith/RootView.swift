@@ -48,6 +48,8 @@ struct RootView: View {
             if !didCompleteSetup {
                 GowithSetupView {
                     withAnimation(.easeInOut(duration: 0.25)) { didCompleteSetup = true }
+                    // 重走首启（清空数据）后回到初始 Tab，避免残留上次的「我的」
+                    selectedTab = .library
                 }
             } else {
                 mainInterface
@@ -172,7 +174,11 @@ struct RootView: View {
                     addButtonAnchor: addButtonAnchor,
                     onAdvance: {
                         if step < 3 {
-                            withAnimation(.easeInOut(duration: 0.3)) { guidedTourStep = step + 1 }
+                            if reduceMotion {
+                                guidedTourStep = step + 1
+                            } else {
+                                withAnimation(.easeInOut(duration: 0.3)) { guidedTourStep = step + 1 }
+                            }
                         } else {
                             finishGuidedTour()
                         }
@@ -232,7 +238,7 @@ struct RootView: View {
     private var content: some View {
         switch selectedTab {
         case .library:
-            LibraryPage(onPack: handlePack)
+            LibraryPage()
         case .packing:
             PackingPage(onPack: handlePack, onRequestManualArrive: { showManualArrive = true })
         case .check:
