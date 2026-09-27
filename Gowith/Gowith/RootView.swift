@@ -208,7 +208,7 @@ struct RootView: View {
 
     private var tabItems: [GowithTabItem] {
         var items = [
-            GowithTabItem(tab: .library, title: "物品库", icon: "square.grid.2x2.fill"),
+            GowithTabItem(tab: .library, title: "家", icon: "house.fill"),
             GowithTabItem(tab: .packing, title: "拿东西", icon: "backpack.fill", badge: packedItems.count),
             GowithTabItem(tab: .check, title: "检查", icon: "checklist", badge: pendingCount),
         ]

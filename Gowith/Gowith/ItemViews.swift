@@ -1,109 +1,52 @@
 import PhotosUI
 import SwiftUI
 
-// MARK: - 物品库页（规格 5.1）
+// MARK: - 物品页 · 家（用户方向 3：以「家」为中心的渐进展开信息架构）
 
 struct LibraryPage: View {
     @EnvironmentObject private var store: GowithStore
     @EnvironmentObject private var locationService: LocationService
     let onPack: (GowithItem) -> Void
 
-    @State private var selectedCategoryID: UUID?
     @State private var editingItem: GowithItem?
     @State private var showAddItem = false
     @State private var editingCategory: GowithCategory?
     @State private var showCategoryEditor = false
+    @State private var showAddPlace = false
+    @State private var showBackpackPicker = false
+    @State private var detailHome: GowithPlace?
+    @State private var detailBackpack: GowithBackpack?
     @State private var highlightedItemID: UUID?
 
-    /// 物品库展示全部未归档物品（含在其他地点的），行内按地点状态区分可操作性（规格 v8：充电线在「公司」也可见）。
-    private var items: [GowithItem] { store.visibleItems }
-    private var categories: [GowithCategory] { store.sortedCategories }
-    private var packedCount: Int { store.packedItems(in: store.selectedBackpack).count }
-    private var canManage: Bool {
-        guard let place = store.selectedPlace else { return false }
-        return locationService.isInside(place)
-    }
-
-    /// 只有「位于当前地点」或「已在背包」的物品可以在围栏内操作；出行会话进行中整库锁定（规格 5.2）。
-    private func isManageable(_ item: GowithItem) -> Bool {
-        guard canManage, store.activeSession == nil else { return false }
-        return item.placeID == store.selectedPlaceID || store.selectedBackpack?.itemIDs.contains(item.id) == true
-    }
-
-    private var filteredItems: [GowithItem] {
-        guard let selectedCategoryID else { return items }
-        return items.filter { $0.categoryID == selectedCategoryID }
-    }
-
-    /// 全部 = 按分类分组；选中分类 = 单组。组名「货架 · X」。
-    private var groups: [(id: String, title: String, items: [GowithItem])] {
-        if let selectedCategoryID {
-            let category = categories.first(where: { $0.id == selectedCategoryID })
-            return [(id: selectedCategoryID.uuidString, title: category?.name ?? "未分类", items: filteredItems)]
-        }
-        var groups: [(id: String, title: String, items: [GowithItem])] = []
-        for category in categories {
-            let categoryItems = items.filter { $0.categoryID == category.id }
-            if !categoryItems.isEmpty {
-                groups.append((id: category.id.uuidString, title: category.name, items: categoryItems))
-            }
-        }
-        let uncategorized = items.filter { item in
-            item.categoryID == nil && !categories.contains(where: { $0.id == item.categoryID })
-        }
-        if !uncategorized.isEmpty {
-            groups.append((id: "uncategorized", title: "未分类", items: uncategorized))
-        }
-        return groups
-    }
+    private var places: [GowithPlace] { store.places.sorted { $0.createdAt < $1.createdAt } }
+    private var packedItems: [GowithItem] { store.packedItems(in: store.selectedBackpack) }
+    private var homeItemCount: Int { store.shelfItems.count }
 
     var body: some View {
         ScrollView {
             VStack(spacing: GowithMetrics.moduleSpacing) {
                 AssetCard(
-                    header: "物品库",
-                    headerEN: "INVENTORY",
-                    badge: "全部 \(categories.count) 类",
-                    leftValue: "\(items.count)",
+                    header: store.selectedPlace?.name ?? "我的家",
+                    headerEN: "HOME",
+                    badge: "共 \(places.count) 个家",
+                    leftValue: "\(homeItemCount)",
                     leftUnit: "件",
-                    leftLabel: "物品库总数",
-                    rightValue: "\(packedCount)",
+                    leftLabel: "当前家物品",
+                    rightValue: "\(packedItems.count)",
                     rightUnit: "件",
                     rightLabel: store.activeSession == nil ? "已装入背包" : "携带中",
                     ctaPlain: "点 ",
-                    ctaAccent: "+ 装包",
-                    texture: .flow
+                    ctaAccent: "+ 添加物品 · 装包",
+                    texture: .home
                 )
 
                 locationStatus
 
-                CategoryChips(
-                    chips: [CategoryChips.Chip(id: nil, name: "全部", systemImage: "square.grid.2x2")]
-                        + categories.map { CategoryChips.Chip(id: $0.id, name: String($0.name.prefix(4)), systemImage: $0.symbolName) },
-                    selection: $selectedCategoryID,
-                    trailingNew: { editingCategory = nil; showCategoryEditor = true },
-                    onEditChip: { id in
-                        guard let category = categories.first(where: { $0.id == id }) else { return }
-                        editingCategory = category
-                        showCategoryEditor = true
-                    }
-                )
+                homeSwitcher
 
-                if items.isEmpty {
-                    emptyState
-                } else if filteredItems.isEmpty {
-                    ContentCard {
-                        Text("这个分类还没有物品，点 + 添加。")
-                            .font(.system(size: 11))
-                            .foregroundStyle(GowithColor.inkTertiary)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.vertical, 14)
-                    }
-                } else {
-                    ForEach(groups, id: \.id) { group in
-                        shelfCard(group.title, items: group.items)
-                    }
-                }
+                currentBackpackCard
+
+                homesSection
 
                 addNewItemEntry
             }
@@ -114,7 +57,7 @@ struct LibraryPage: View {
         .scrollIndicators(.hidden)
         .background(GowithColor.appBackground)
         .sheet(isPresented: $showAddItem) {
-            ItemEditorView(initialCategoryID: selectedCategoryID) { savedItem, isNew in
+            ItemEditorView { savedItem, isNew in
                 guard isNew else { return }
                 highlightedItemID = savedItem.id
                 Task { @MainActor in
@@ -129,6 +72,14 @@ struct LibraryPage: View {
         .sheet(isPresented: $showCategoryEditor) {
             CategoryEditorView(category: editingCategory)
         }
+        .sheet(isPresented: $showAddPlace) { PlaceEditorView(place: nil) }
+        .sheet(isPresented: $showBackpackPicker) { BackpackPickerSheet() }
+        .sheet(item: $detailHome) { place in
+            HomeDetailSheet(place: place)
+        }
+        .sheet(item: $detailBackpack) { backpack in
+            BackpackDetailSheet(backpack: backpack)
+        }
     }
 
     @ViewBuilder
@@ -141,50 +92,244 @@ struct LibraryPage: View {
                 systemImage: "lock.fill",
                 lines: ["本次清单已锁定，装包与编辑将在出行完成后恢复。"]
             )
-        } else if let place = store.selectedPlace, !canManage {
+        } else if let place = store.selectedPlace, !locationService.isInside(place) {
             FenceGateNote(placeName: place.name)
         }
     }
 
-    private func shelfCard(_ title: String, items: [GowithItem]) -> some View {
-        ContentCard(padding: 10) {
-            VStack(spacing: 0) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("货架 · \(title)")
+    // MARK: (a) 家切换条：直观看到并切换当前所在的家
+
+    private var homeSwitcher: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(places) { place in
+                    let isSelected = place.id == store.selectedPlaceID
+                    Button {
+                        store.selectPlace(place)
+                        GowithHaptics.selection()
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: isSelected ? "house.fill" : "house")
+                                .font(.system(size: 10, weight: .semibold))
+                            Text(place.name)
+                        }
+                        .font(.system(size: 11.5, weight: isSelected ? .bold : .medium))
+                        .foregroundStyle(isSelected ? GowithColor.onPrimary : GowithColor.inkSecondary)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 30)
+                        .background(isSelected ? GowithColor.ink : GowithColor.surface, in: Capsule())
+                        .overlay { Capsule().stroke(isSelected ? .clear : GowithColor.surfaceBorder, lineWidth: 1).allowsHitTesting(false) }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(store.activeSession != nil)
+                    .accessibilityLabel(isSelected ? "当前家：\(place.name)" : "切换到家：\(place.name)")
+                }
+                Button {
+                    showAddPlace = true
+                } label: {
+                    Image(systemName: "plus")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(GowithColor.inkSecondary)
-                    Spacer()
-                    Text("\(items.count) 件")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(GowithColor.inkTertiary)
+                        .frame(width: 30, height: 30)
+                        .background(GowithColor.surface, in: Capsule())
+                        .overlay { Capsule().stroke(GowithColor.surfaceBorder, lineWidth: 1).allowsHitTesting(false) }
                 }
-                .padding(.horizontal, 4)
-                .padding(.bottom, 4)
+                .buttonStyle(.plain)
+                .accessibilityLabel("添加新家")
+            }
+            .padding(.horizontal, 1)
+            .padding(.vertical, 1)
+            .opacity(store.activeSession == nil ? 1 : 0.4)
+            .animation(GowithMotion.content, value: store.activeSession == nil)
+        }
+    }
 
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    let packed = store.selectedBackpack?.itemIDs.contains(item.id) == true
-                    ShelfRow(
-                        item: item,
-                        placeName: packed ? nil : store.place(for: item.placeID)?.name,
-                        isPacked: packed,
-                        isEditable: isManageable(item),
-                        highlight: highlightedItemID == item.id,
-                        onTogglePack: { onPack(item) },
-                        onEdit: { editingItem = item }
-                    )
-                    .contextMenu {
-                        Button("编辑物品", systemImage: "pencil") { editingItem = item }
-                            .disabled(!isManageable(item))
-                        if let category = categories.first(where: { $0.id == item.categoryID }) {
-                            Button("编辑分类「\(category.name)」", systemImage: "folder") { editingCategory = category }
+    // MARK: (b) 当前背包卡：正在使用的背包与内容透视
+
+    private var currentBackpackCard: some View {
+        ContentCard(padding: 12) {
+            if let backpack = store.selectedBackpack {
+                Button {
+                    detailBackpack = backpack
+                } label: {
+                    VStack(spacing: 10) {
+                        HStack(spacing: 12) {
+                            GowithBackpackPreview(backpack: backpack, size: 46)
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(spacing: 6) {
+                                    Text(backpack.name)
+                                        .font(GowithFont.rowTitle)
+                                        .foregroundStyle(GowithColor.ink)
+                                    Text("正在使用")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundStyle(GowithColor.onPrimary)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(GowithColor.ink, in: Capsule())
+                                }
+                                Text(originText(for: backpack))
+                                    .font(GowithFont.rowSubtitle)
+                                    .foregroundStyle(GowithColor.inkTertiary)
+                            }
+                            Spacer(minLength: 8)
+                            Button {
+                                showBackpackPicker = true
+                            } label: {
+                                Text("换背包")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(GowithColor.ink)
+                                    .padding(.horizontal, 11)
+                                    .frame(minHeight: 30)
+                                    .background(GowithColor.softSurface, in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(store.activeSession != nil)
+                            .accessibilityLabel("更换背包")
+                        }
+
+                        if !packedItems.isEmpty {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 6) {
+                                    ForEach(Array(packedItems.prefix(6)), id: \.id) { item in
+                                        HStack(spacing: 5) {
+                                            ItemThumbnail(fileName: item.imageFileName, symbolName: item.symbolName, size: 20)
+                                            Text(item.name)
+                                                .font(.system(size: 10, weight: .medium))
+                                                .foregroundStyle(GowithColor.inkSecondary)
+                                                .lineLimit(1)
+                                        }
+                                        .padding(.leading, 4)
+                                        .padding(.trailing, 9)
+                                        .frame(minHeight: 28)
+                                        .background(GowithColor.softSurface, in: Capsule())
+                                    }
+                                    if packedItems.count > 6 {
+                                        Text("+\(packedItems.count - 6)")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundStyle(GowithColor.inkTertiary)
+                                            .padding(.horizontal, 6)
+                                    }
+                                }
+                                .padding(.vertical, 1)
+                            }
+                        }
+
+                        HStack {
+                            Text("查看背包内容")
+                                .font(.system(size: 10.5, weight: .bold))
+                                .foregroundStyle(GowithColor.accent)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(GowithColor.accent)
+                            Spacer()
+                            Text("点卡片看每件的归属与属性")
+                                .font(.system(size: 9.5))
+                                .foregroundStyle(GowithColor.inkTertiary)
                         }
                     }
-                    if index < items.count - 1 {
-                        Divider().padding(.leading, 62)
+                    .padding(2)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("当前背包：\(backpack.name)，已装 \(packedItems.count) 件，\(originText(for: backpack))。双击查看背包内容")
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "backpack")
+                        .font(.system(size: 24, weight: .light))
+                        .foregroundStyle(GowithColor.inkTertiary)
+                    Text("还没有正在使用的背包")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(GowithColor.ink)
+                    Button {
+                        showBackpackPicker = true
+                    } label: {
+                        Text("选择或新建背包")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(GowithColor.onPrimary)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 32)
+                            .background(GowithColor.ink, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+            }
+        }
+    }
+
+    private func originText(for backpack: GowithBackpack) -> String {
+        if store.activeSession?.backpackID == backpack.id { return "随身携带中" }
+        guard let place = store.place(for: backpack.placeID) else { return "未设置地点" }
+        return "从「\(place.name)」拿出"
+    }
+
+    // MARK: (c) 全部家：只有计数，点开才看到里面的背包与物品
+
+    private var homesSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("全部家 · \(places.count) 个")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(GowithColor.inkSecondary)
+                .padding(.horizontal, 6)
+            ContentCard(padding: 8) {
+                VStack(spacing: 0) {
+                    ForEach(Array(places.enumerated()), id: \.element.id) { index, place in
+                        homeRow(place)
+                        if index < places.count - 1 {
+                            Divider().padding(.leading, 58)
+                        }
                     }
                 }
             }
         }
+    }
+
+    private func homeRow(_ place: GowithPlace) -> some View {
+        let itemCount = store.visibleItems.filter { $0.placeID == place.id }.count
+        let backpackCount = store.visibleBackpacks.filter { $0.placeID == place.id }.count
+        let isCurrent = place.id == store.selectedPlaceID
+        return Button {
+            detailHome = place
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "house.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(isCurrent ? GowithColor.onPrimary : GowithColor.ink)
+                    .frame(width: 34, height: 34)
+                    .background(isCurrent ? GowithColor.ink : GowithColor.softSurface, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(place.name)
+                            .font(GowithFont.rowTitle)
+                            .foregroundStyle(GowithColor.ink)
+                            .lineLimit(1)
+                        if isCurrent {
+                            Text("当前")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(GowithColor.onPrimary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(GowithColor.ink, in: Capsule())
+                        }
+                    }
+                    Text("物品 \(itemCount) · 背包 \(backpackCount)")
+                        .font(GowithFont.rowSubtitle)
+                        .foregroundStyle(GowithColor.inkTertiary)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(GowithColor.inkTertiary)
+                    .frame(width: 30, height: 44)
+            }
+            .padding(.horizontal, 6)
+            .frame(minHeight: GowithMetrics.rowHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(isCurrent ? "当前家" : "家")：\(place.name)，物品 \(itemCount) 件，背包 \(backpackCount) 个。双击查看家内物品")
     }
 
     private var addNewItemEntry: some View {
@@ -206,25 +351,6 @@ struct LibraryPage: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint("打开添加物品页")
-    }
-
-    private var emptyState: some View {
-        ContentCard {
-            VStack(spacing: 8) {
-                Image(systemName: "archivebox")
-                    .font(.system(size: 28, weight: .light))
-                    .foregroundStyle(GowithColor.inkTertiary)
-                Text("还没有物品")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(GowithColor.ink)
-                Text("点下方「添加新物品」，把常用物品放进货架。")
-                    .font(.system(size: 11))
-                    .foregroundStyle(GowithColor.inkSecondary)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 22)
-        }
     }
 }
 
@@ -404,6 +530,8 @@ struct ItemEditorView: View {
     @EnvironmentObject private var store: GowithStore
     let item: GowithItem?
     let initialCategoryID: UUID?
+    /// 从某个家的详情页进入时预置新建物品的归属家；缺省为当前家。
+    let initialPlaceID: UUID?
     var onSaved: ((GowithItem, Bool) -> Void)? = nil
 
     @State private var name: String
@@ -415,9 +543,10 @@ struct ItemEditorView: View {
     @State private var showArchiveConfirm = false
     @FocusState private var nameFocused: Bool
 
-    init(item: GowithItem? = nil, initialCategoryID: UUID? = nil, onSaved: ((GowithItem, Bool) -> Void)? = nil) {
+    init(item: GowithItem? = nil, initialCategoryID: UUID? = nil, initialPlaceID: UUID? = nil, onSaved: ((GowithItem, Bool) -> Void)? = nil) {
         self.item = item
         self.initialCategoryID = initialCategoryID
+        self.initialPlaceID = initialPlaceID
         self.onSaved = onSaved
         _name = State(initialValue: item?.name ?? "")
         _symbolName = State(initialValue: item?.symbolName ?? "square.dashed")
@@ -526,7 +655,7 @@ struct ItemEditorView: View {
             item.categoryID = categoryID
             onSaved?(item, false)
         } else {
-            let newItem = GowithItem(name: trimmedName, symbolName: symbolName, imageFileName: newFileName, categoryID: categoryID, placeID: store.selectedPlaceID)
+            let newItem = GowithItem(name: trimmedName, symbolName: symbolName, imageFileName: newFileName, categoryID: categoryID, placeID: initialPlaceID ?? store.selectedPlaceID)
             store.items.append(newItem)
             onSaved?(newItem, true)
         }
@@ -851,13 +980,16 @@ struct BackpackEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: GowithStore
     let backpack: GowithBackpack?
+    /// 从某个家的详情页进入时预置新建背包的归属家；缺省为当前家。
+    let initialPlaceID: UUID?
 
     @State private var name: String
     @State private var symbolName: String
     @State private var imageData: Data?
 
-    init(backpack: GowithBackpack? = nil) {
+    init(backpack: GowithBackpack? = nil, initialPlaceID: UUID? = nil) {
         self.backpack = backpack
+        self.initialPlaceID = initialPlaceID
         _name = State(initialValue: backpack?.name ?? "")
         _symbolName = State(initialValue: backpack?.symbolName ?? "bag.backpack.classic")
         _imageData = State(initialValue: LocalImageStore.load(fileName: backpack?.imageFileName))
@@ -914,7 +1046,7 @@ struct BackpackEditorView: View {
                 backpack.imageFileName = nil
             }
         } else {
-            let newBackpack = GowithBackpack(name: trimmedName, symbolName: symbolName, imageFileName: newFileName, placeID: store.selectedPlaceID)
+            let newBackpack = GowithBackpack(name: trimmedName, symbolName: symbolName, imageFileName: newFileName, placeID: initialPlaceID ?? store.selectedPlaceID)
             store.backpacks.append(newBackpack)
             if store.selectedBackpackID == nil || store.selectedPlaceID == newBackpack.placeID { store.selectedBackpackID = newBackpack.id }
         }

@@ -62,7 +62,7 @@ struct PackingPage: View {
             rightLabel: "货架剩余",
             ctaPlain: "核对完成，点底部 ",
             ctaAccent: "开始出行",
-            texture: .rings
+            texture: .backpack
         )
 
         if locationService.needsPermissionRecovery {
@@ -191,7 +191,7 @@ struct PackingPage: View {
                 rightValue: awayDurationValue(session).value,
                 rightUnit: awayDurationValue(session).unit,
                 rightLabel: "已出门",
-                texture: .rings
+                texture: .backpack
             )
 
             ContentCard(padding: 10) {

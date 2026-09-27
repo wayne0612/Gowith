@@ -227,10 +227,11 @@ struct AppHeader: View {
 // MARK: - 资产卡片（规格 4.2）
 
 enum AssetCardTexture {
-    case flow      // 物品库
-    case rings     // 拿东西
+    case home       // 家（物品页）
+    case flow       // 通用流线（历史深色卡）
+    case backpack   // 拿东西
     case crossCircle // 检查
-    case none      // 历史深色卡
+    case none
 }
 
 struct AssetCard: View {
@@ -355,6 +356,39 @@ struct AssetCard: View {
             Canvas { context, size in
                 var path = Path()
                 switch texture {
+                case .home:
+                    // 屋脊折线 + 圆角方形房屋轮廓（右上角，线稿与 flow/rings 同一语言）
+                    let houseCenter = CGPoint(x: size.width * 0.85, y: size.height * 0.44)
+                    let w: CGFloat = 96, h: CGFloat = 84
+                    let bodyRect = CGRect(x: houseCenter.x - w / 2, y: houseCenter.y - h / 2 + 14, width: w, height: h - 14)
+                    path.addRoundedRect(in: bodyRect, cornerSize: CGSize(width: 10, height: 10))
+                    path.move(to: CGPoint(x: houseCenter.x - w / 2 - 8, y: bodyRect.minY))
+                    path.addLine(to: CGPoint(x: houseCenter.x, y: bodyRect.minY - 26))
+                    path.addLine(to: CGPoint(x: houseCenter.x + w / 2 + 8, y: bodyRect.minY))
+                    context.stroke(path, with: .color(.white.opacity(0.13)), lineWidth: 1)
+                    var door = Path()
+                    door.move(to: CGPoint(x: houseCenter.x + 10, y: bodyRect.maxY))
+                    door.addLine(to: CGPoint(x: houseCenter.x + 10, y: bodyRect.maxY - 26))
+                    door.addCurve(to: CGPoint(x: houseCenter.x + 26, y: bodyRect.maxY),
+                                  control1: CGPoint(x: houseCenter.x + 10, y: bodyRect.maxY - 36),
+                                  control2: CGPoint(x: houseCenter.x + 26, y: bodyRect.maxY - 36))
+                    context.stroke(door, with: .color(.white.opacity(0.09)), lineWidth: 1)
+                case .backpack:
+                    // 背包圆角轮廓 + 顶部提手（右上角）
+                    let center = CGPoint(x: size.width * 0.85, y: size.height * 0.46)
+                    let w: CGFloat = 86, h: CGFloat = 104
+                    let bodyRect = CGRect(x: center.x - w / 2, y: center.y - h / 2, width: w, height: h)
+                    path.addRoundedRect(in: bodyRect, cornerSize: CGSize(width: 26, height: 26))
+                    var strap = Path()
+                    strap.move(to: CGPoint(x: center.x - 22, y: bodyRect.minY + 2))
+                    strap.addCurve(to: CGPoint(x: center.x + 22, y: bodyRect.minY + 2),
+                                   control1: CGPoint(x: center.x - 14, y: bodyRect.minY - 22),
+                                   control2: CGPoint(x: center.x + 14, y: bodyRect.minY - 22))
+                    path.addPath(strap)
+                    context.stroke(path, with: .color(.white.opacity(0.12)), lineWidth: 1)
+                    var pocket = Path()
+                    pocket.addRoundedRect(in: CGRect(x: center.x - 20, y: center.y + 6, width: 40, height: 28), cornerSize: CGSize(width: 10, height: 10))
+                    context.stroke(pocket, with: .color(.white.opacity(0.09)), lineWidth: 1)
                 case .flow:
                     path.move(to: CGPoint(x: -10, y: size.height * 0.82))
                     path.addCurve(to: CGPoint(x: size.width + 10, y: size.height * 0.3),
@@ -367,13 +401,6 @@ struct AssetCard: View {
                                     control1: CGPoint(x: size.width * 0.35, y: -size.height * 0.1),
                                     control2: CGPoint(x: size.width * 0.6, y: size.height * 0.95))
                     context.stroke(second, with: .color(.white.opacity(0.1)), lineWidth: 1)
-                case .rings:
-                    let center = CGPoint(x: size.width * 0.86, y: size.height * 0.42)
-                    path.addEllipse(in: CGRect(x: center.x - 78, y: center.y - 78, width: 156, height: 156))
-                    context.stroke(path, with: .color(.white.opacity(0.14)), lineWidth: 1)
-                    var inner = Path()
-                    inner.addEllipse(in: CGRect(x: center.x - 46, y: center.y - 46, width: 92, height: 92))
-                    context.stroke(inner, with: .color(.white.opacity(0.1)), lineWidth: 1)
                 case .crossCircle:
                     let center = CGPoint(x: size.width * 0.85, y: size.height * 0.44)
                     path.addEllipse(in: CGRect(x: center.x - 40, y: center.y - 40, width: 80, height: 80))
