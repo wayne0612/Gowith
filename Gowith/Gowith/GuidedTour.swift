@@ -76,12 +76,6 @@ struct GuidedTourOverlay: View {
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { pulse = true }
             withAnimation(.easeInOut(duration: 0.55).repeatForever(autoreverses: true)) { handNudge = true }
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(accessibilitySummary)
-    }
-
-    private var accessibilitySummary: String {
-        "引导第 \(step + 1) 步，共 4 步：\(current.title)。\(current.message)"
     }
 
     // MARK: 挖洞遮罩
@@ -92,6 +86,7 @@ struct GuidedTourOverlay: View {
             .frame(width: container.width, height: container.height)
             .contentShape(Rectangle())
             .onTapGesture {} // 挡住底层点击，避免引导期间误操作
+            .accessibilityHidden(true)
     }
 
     private func spotlightRing(anchor: CGPoint) -> some View {
@@ -105,6 +100,7 @@ struct GuidedTourOverlay: View {
             .scaleEffect(pulse ? 1.06 : 1)
             .position(anchor)
             .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     /// 高亮区本身可点：点按即推进（引导用户“按提示点这里”）。
@@ -127,6 +123,7 @@ struct GuidedTourOverlay: View {
             .position(x: anchor.x + current.holeSize.width * 0.52 + 10,
                       y: anchor.y + current.holeSize.height * 0.5 + (handNudge ? 12 : 2))
             .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     // MARK: 分步卡
