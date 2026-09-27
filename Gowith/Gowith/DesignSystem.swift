@@ -357,21 +357,21 @@ struct AssetCard: View {
                 var path = Path()
                 switch texture {
                 case .home:
-                    // 屋脊折线 + 圆角方形房屋轮廓（右上角，线稿与 flow/rings 同一语言）
-                    let houseCenter = CGPoint(x: size.width * 0.85, y: size.height * 0.44)
-                    let w: CGFloat = 96, h: CGFloat = 84
-                    let bodyRect = CGRect(x: houseCenter.x - w / 2, y: houseCenter.y - h / 2 + 14, width: w, height: h - 14)
+                    // 屋脊折线 + 圆角方形房屋轮廓（右下象限，避开右上角徽标）
+                    let houseCenter = CGPoint(x: size.width * 0.82, y: size.height * 0.62)
+                    let w: CGFloat = 88, h: CGFloat = 78
+                    let bodyRect = CGRect(x: houseCenter.x - w / 2, y: houseCenter.y - h / 2 + 13, width: w, height: h - 13)
                     path.addRoundedRect(in: bodyRect, cornerSize: CGSize(width: 10, height: 10))
                     path.move(to: CGPoint(x: houseCenter.x - w / 2 - 8, y: bodyRect.minY))
-                    path.addLine(to: CGPoint(x: houseCenter.x, y: bodyRect.minY - 26))
+                    path.addLine(to: CGPoint(x: houseCenter.x, y: bodyRect.minY - 24))
                     path.addLine(to: CGPoint(x: houseCenter.x + w / 2 + 8, y: bodyRect.minY))
                     context.stroke(path, with: .color(.white.opacity(0.13)), lineWidth: 1)
                     var door = Path()
-                    door.move(to: CGPoint(x: houseCenter.x + 10, y: bodyRect.maxY))
-                    door.addLine(to: CGPoint(x: houseCenter.x + 10, y: bodyRect.maxY - 26))
-                    door.addCurve(to: CGPoint(x: houseCenter.x + 26, y: bodyRect.maxY),
-                                  control1: CGPoint(x: houseCenter.x + 10, y: bodyRect.maxY - 36),
-                                  control2: CGPoint(x: houseCenter.x + 26, y: bodyRect.maxY - 36))
+                    door.move(to: CGPoint(x: houseCenter.x + 9, y: bodyRect.maxY))
+                    door.addLine(to: CGPoint(x: houseCenter.x + 9, y: bodyRect.maxY - 24))
+                    door.addCurve(to: CGPoint(x: houseCenter.x + 24, y: bodyRect.maxY),
+                                  control1: CGPoint(x: houseCenter.x + 9, y: bodyRect.maxY - 33),
+                                  control2: CGPoint(x: houseCenter.x + 24, y: bodyRect.maxY - 33))
                     context.stroke(door, with: .color(.white.opacity(0.09)), lineWidth: 1)
                 case .backpack:
                     // 背包圆角轮廓 + 顶部提手（右上角）
@@ -533,7 +533,7 @@ struct ShelfRow: View {
             }
             Spacer(minLength: 8)
 
-            PackPlusButton(isPacked: isPacked, isEnabled: isEditable) {
+            PackPlusButton(isPacked: isPacked, isEnabled: isEditable, anchorID: item.id) {
                 onTogglePack()
             }
             .disabled(!isEditable)
