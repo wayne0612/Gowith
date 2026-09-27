@@ -42,6 +42,7 @@ final class GowithStoreLogicTests: XCTestCase {
 
     // MARK: - processExpiredPending
 
+    @discardableResult
     private func makePendingSession(in store: GowithStore, origin: GowithPlace, item: GowithItem, since: Date) -> OutingSession {
         let session = OutingSession()
         session.originPlaceID = origin.id
