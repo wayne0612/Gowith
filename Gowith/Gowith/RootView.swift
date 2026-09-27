@@ -7,8 +7,9 @@ struct RootView: View {
     @EnvironmentObject private var store: GowithStore
     @EnvironmentObject private var locationService: LocationService
     @AppStorage("gowith.appMode") private var mode: AppMode = .basic
-    @AppStorage("gowith.hasSeenTutorial") private var hasSeenTutorial = false
     @AppStorage("gowith.didCompleteSetup") private var didCompleteSetup = false
+    @AppStorage("gowith.hasSeenHero") private var hasSeenHero = false
+    @AppStorage("gowith.hasSeenGuidedTour") private var hasSeenGuidedTour = false
 
     @State private var selectedTab: AppTab = .library
     @State private var isReviewingArrival = false
@@ -20,6 +21,8 @@ struct RootView: View {
     @State private var showAddMenu = false
     @State private var addTarget: AddTarget?
     @State private var isHeroFinished = false
+    @State private var guidedTourStep: Int?
+    @State private var addButtonAnchor: CGPoint?
 
     /// 设备底部安全区高度（34pt 刘海屏 / 0pt 实体 Home 键机型）。
     /// 直接读 UIKit，不经 SwiftUI 布局参与，避免布局期状态反馈。
@@ -42,9 +45,7 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            if !hasSeenTutorial {
-                TutorialView { hasSeenTutorial = true }
-            } else if !didCompleteSetup {
+            if !didCompleteSetup {
                 GowithSetupView {
                     withAnimation(.easeInOut(duration: 0.25)) { didCompleteSetup = true }
                 }
@@ -54,12 +55,15 @@ struct RootView: View {
         }
         .preferredColorScheme(mode == .advanced ? .dark : .light)
         .tint(GowithColor.accent)
-        // 冷启动品牌帧叠加在最上层，动画与底层内容加载并行（信息与引导方案 3.1）
+        // 品牌故事仅首次启动出现一次（gowith.hasSeenHero）；之后每次打开直进主界面
         .overlay {
-            if !isHeroFinished {
-                HeroSplashView { isHeroFinished = true }
-                    .transition(.opacity)
-                    .zIndex(10)
+            if !isHeroFinished && !hasSeenHero {
+                HeroSplashView {
+                    isHeroFinished = true
+                    hasSeenHero = true
+                }
+                .transition(.opacity)
+                .zIndex(10)
             }
         }
     }
@@ -99,6 +103,16 @@ struct RootView: View {
                 if let session = store.activeSession, session.status == .away {
                     locationService.startMonitoring(session: session, places: store.places)
                 }
+                // 首次进入主界面 1s 后开引导（等布局与锚点测量稳定）
+                if !hasSeenGuidedTour {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    guard !hasSeenGuidedTour else { return }
+                    withAnimation(.easeInOut(duration: 0.3)) { guidedTourStep = 0 }
+                }
+            }
+            .onChange(of: hasSeenGuidedTour) { _, newValue in
+                // 「我的 → 重新观看引导动画」置 false 时重新开始
+                if !newValue { guidedTourStep = 0 }
             }
             .onChange(of: locationService.arrivedPlaceID) { _, placeID in
                 handleArrival(placeID)
@@ -141,7 +155,40 @@ struct RootView: View {
         }
         .onPreferenceChange(PackSourceKey.self) { packSourceAnchors = $0 }
         .onPreferenceChange(TabAnchorKey.self) { tabAnchors = $0 }
+        .onPreferenceChange(AddButtonAnchorKey.self) { addButtonAnchor = $0 }
         .animation(reduceMotion ? nil : GowithMotion.content, value: selectedTab)
+        .overlay { packBallOverlay }
+        .overlay(alignment: .bottom) {
+            bottomControls
+                .padding(.bottom, 8)
+                .ignoresSafeArea(.container, edges: .bottom)
+        }
+        // 引导层最后挂载，盖住底栏与全部内容
+        .overlay {
+            if let step = guidedTourStep, !hasSeenGuidedTour {
+                GuidedTourOverlay(
+                    step: step,
+                    tabAnchors: tabAnchors,
+                    addButtonAnchor: addButtonAnchor,
+                    onAdvance: {
+                        if step < 3 {
+                            withAnimation(.easeInOut(duration: 0.3)) { guidedTourStep = step + 1 }
+                        } else {
+                            finishGuidedTour()
+                        }
+                    },
+                    onFinish: { finishGuidedTour() }
+                )
+                .transition(.opacity)
+                .zIndex(20)
+            }
+        }
+    }
+
+    private func finishGuidedTour() {
+        hasSeenGuidedTour = true
+        guidedTourStep = nil
+        GowithHaptics.success()
     }
 
     /// 底栏总高：主按钮区（渐隐 26 + 按钮 48 + 上下 12）＋ Tab 栏 54 ＋ 间距 8。
@@ -428,108 +475,7 @@ struct RootView: View {
     }
 }
 
-// MARK: - 首启教学动画（规格 5.8：三帧横滑，可跳过）
-
-private struct TutorialView: View {
-    let onFinish: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var page = 0
-
-    private struct Frame {
-        let kicker: String
-        let emoji: String
-        let title: String
-        let lines: [String]
-    }
-
-    private let frames: [Frame] = [
-        Frame(kicker: "01 / 添加", emoji: "📦", title: "把物品放进货架",
-              lines: ["记下你常带的每一样东西，", "它们都会出现在物品库里。"]),
-        Frame(kicker: "02 / 装包", emoji: "🎒", title: "点 + 装入背包",
-              lines: ["装入后「拿东西」角标实时计数，", "点底部按钮开始出行。"]),
-        Frame(kicker: "03 / 清点", emoji: "✅", title: "回家逐项打勾",
-              lines: ["到家后逐项确认，", "找不到的 3 天内可补登。"]),
-    ]
-
-    var body: some View {
-        VStack(spacing: 0) {
-            TabView(selection: $page) {
-                ForEach(frames.indices, id: \.self) { index in
-                    tutorialFrame(frames[index])
-                        .tag(index)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: page)
-
-            HStack {
-                Spacer()
-                if page < frames.count - 1 {
-                    Button("跳过 ›") { onFinish() }
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(GowithColor.inkTertiary)
-                        .frame(minWidth: 44, minHeight: 44)
-                } else {
-                    Button {
-                        onFinish()
-                    } label: {
-                        Text("开始体验 →")
-                            .font(.system(size: 13, weight: .heavy, design: .rounded))
-                            .foregroundStyle(GowithColor.onPrimary)
-                            .padding(.horizontal, 22)
-                            .frame(minHeight: 44)
-                            .background(GowithColor.ink, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, GowithMetrics.pagePadding + 8)
-            .padding(.bottom, 18)
-
-            HStack(spacing: 6) {
-                ForEach(frames.indices, id: \.self) { index in
-                    Capsule()
-                        .fill(index == page ? GowithColor.ink : GowithColor.inkTertiary.opacity(0.3))
-                        .frame(width: index == page ? 20 : 4, height: 4)
-                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: page)
-                }
-            }
-            .frame(height: 20)
-            .padding(.bottom, 12)
-        }
-        .background(GowithColor.appBackground)
-    }
-
-    private func tutorialFrame(_ frame: Frame) -> some View {
-        VStack(spacing: 0) {
-            Spacer()
-            Text(frame.kicker)
-                .font(.system(size: 11, weight: .bold))
-                .tracking(2)
-                .foregroundStyle(GowithColor.accent)
-            Text(frame.emoji)
-                .font(.system(size: 96))
-                .padding(.vertical, 30)
-            Text(frame.title)
-                .font(.system(size: 22, weight: .heavy, design: .rounded))
-                .foregroundStyle(GowithColor.ink)
-            VStack(spacing: 3) {
-                ForEach(frame.lines, id: \.self) { line in
-                    Text(line)
-                        .font(.system(size: 13))
-                        .foregroundStyle(GowithColor.inkSecondary)
-                }
-            }
-            .padding(.top, 10)
-            Spacer()
-            Spacer()
-        }
-        .padding(.horizontal, 32)
-        .accessibilityElement(children: .combine)
-    }
-}
-
-// MARK: - 首启设置（规格 6.2：教学动画播完后进入，负责首个地点/背包/物品创建）
+// MARK: - 首启设置（规格 6.2：新用户进入后创建首个地点/背包/物品）
 
 struct GowithSetupView: View {
     @EnvironmentObject private var store: GowithStore

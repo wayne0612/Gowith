@@ -612,6 +612,14 @@ struct TabAnchorKey: PreferenceKey {
     }
 }
 
+/// 「＋」按钮中心位置（引导聚光灯锚点），在命名坐标系 "root" 中测量。
+struct AddButtonAnchorKey: PreferenceKey {
+    static var defaultValue: CGPoint? = nil
+    static func reduce(value: inout CGPoint?, nextValue: () -> CGPoint?) {
+        value = nextValue() ?? value
+    }
+}
+
 // MARK: - 清点行（规格 4.4）
 
 struct CheckRow: View {
@@ -889,6 +897,12 @@ struct GowithAddButton: View {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .background(
+            GeometryReader { geo in
+                let frame = geo.frame(in: .named("root"))
+                return Color.clear.preference(key: AddButtonAnchorKey.self, value: CGPoint(x: frame.midX, y: frame.midY))
+            }
+        )
         .accessibilityLabel("添加")
         .accessibilityHint("添加物品、背包或地点")
         .overlay(alignment: .bottom) {
