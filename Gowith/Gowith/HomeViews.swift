@@ -37,6 +37,9 @@ struct HomeDetailSheet: View {
             ScrollView {
                 VStack(spacing: GowithMetrics.moduleSpacing) {
                     summaryCard
+                    if isCurrent && store.activeSession == nil && !locationService.isInside(place) {
+                        FenceGateNote(placeName: place.name)
+                    }
                     backpacksCard
                     itemsSection
                     addNewItemEntry
@@ -183,6 +186,7 @@ struct HomeDetailSheet: View {
         .buttonStyle(.plain)
         .contextMenu {
             Button("编辑背包", systemImage: "pencil") { editingBackpack = backpack }
+                .disabled(store.activeSession != nil)
         }
         .accessibilityLabel("背包：\(backpack.name)，已装 \(backpack.itemIDs.count) 件。双击查看背包内容")
     }
@@ -246,7 +250,9 @@ struct HomeDetailSheet: View {
                         onEdit: { editingItem = item }
                     )
                     .contextMenu {
+                        // 规格 5.2：出行中 / 围栏外清单锁定，编辑入口同步禁用
                         Button("编辑物品", systemImage: "pencil") { editingItem = item }
+                            .disabled(!canManage)
                         if let category = store.sortedCategories.first(where: { $0.id == item.categoryID }) {
                             Button("编辑分类「\(category.name)」", systemImage: "folder") {
                                 editingCategory = category
