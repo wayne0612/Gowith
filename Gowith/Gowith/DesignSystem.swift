@@ -77,6 +77,8 @@ enum GowithMotion {
     static let menu = Animation.spring(response: 0.32, dampingFraction: 0.8)
     /// 基础/进阶模式切换的外壳过渡（弹性 + 明显缩放差）
     static let modeSwitch = Animation.spring(response: 0.42, dampingFraction: 0.86)
+    /// Hero 品牌帧句点落下弹跳（信息与引导方案 3.1）
+    static let heroDot = Animation.spring(response: 0.45, dampingFraction: 0.5)
 }
 
 /// 关键时刻的触觉反馈；「我的 → 触感反馈」可关闭（gowith.hapticsEnabled）。

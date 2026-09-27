@@ -19,6 +19,7 @@ struct RootView: View {
     @State private var showManualArrive = false
     @State private var showAddMenu = false
     @State private var addTarget: AddTarget?
+    @State private var isHeroFinished = false
 
     /// 设备底部安全区高度（34pt 刘海屏 / 0pt 实体 Home 键机型）。
     /// 直接读 UIKit，不经 SwiftUI 布局参与，避免布局期状态反馈。
@@ -53,6 +54,14 @@ struct RootView: View {
         }
         .preferredColorScheme(mode == .advanced ? .dark : .light)
         .tint(GowithColor.accent)
+        // 冷启动品牌帧叠加在最上层，动画与底层内容加载并行（信息与引导方案 3.1）
+        .overlay {
+            if !isHeroFinished {
+                HeroSplashView { isHeroFinished = true }
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
+        }
     }
 
     // MARK: 全局骨架（规格 3：固定头部 / 唯一滑动区 / 悬浮主按钮 / Tab 栏）
