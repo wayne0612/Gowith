@@ -150,6 +150,8 @@ struct ProfilePage: View {
             Button("清空全部数据", role: .destructive) {
                 store.resetAll()
                 didCompleteSetup = false
+                // 重走首启后重播引导，让新起点完整重来（Hero 一次性标记保留）
+                hasSeenGuidedTour = false
             }
             Button("取消", role: .cancel) {}
         } message: {
