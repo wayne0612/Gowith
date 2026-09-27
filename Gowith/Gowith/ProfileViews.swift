@@ -11,6 +11,7 @@ struct ProfilePage: View {
     @AppStorage("gowith.hasSeenTutorial") private var hasSeenTutorial = false
     @AppStorage("gowith.didCompleteSetup") private var didCompleteSetup = false
     @State private var showHistory = false
+    @State private var showAbout = false
     @State private var showResetConfirm = false
 
     private var itemCount: Int { store.visibleItems.count }
@@ -103,7 +104,7 @@ struct ProfilePage: View {
                         }
                     }
                     Divider().padding(.leading, 46)
-                    settingRow(icon: "info.circle", title: "关于 Gowith", value: appVersion)
+                    settingRow(icon: "info.circle", title: "关于 Gowith", value: appVersion) { showAbout = true }
                 }
 
                 settingGroup(title: "账号") {
@@ -140,6 +141,7 @@ struct ProfilePage: View {
         .scrollIndicators(.hidden)
         .background(GowithColor.appBackground)
         .sheet(isPresented: $showHistory) { HistoryPage() }
+        .sheet(isPresented: $showAbout) { AboutView() }
         .confirmationDialog("清空全部数据？", isPresented: $showResetConfirm, titleVisibility: .visible) {
             Button("清空全部数据", role: .destructive) {
                 store.resetAll()
@@ -218,6 +220,102 @@ struct ProfilePage: View {
         .onChange(of: isOn.wrappedValue) { _, _ in
             GowithHaptics.selection()
         }
+    }
+}
+
+// MARK: - 关于 Gowith（功能与名字鲜明化：定位语固定落位）
+
+struct AboutView: View {
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("gowith.appMode") private var mode: AppMode = .basic
+    private var appVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        return "v\(version)"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SheetNavBar(
+                title: "关于 Gowith",
+                saveTitle: "完成",
+                saveEnabled: true,
+                onCancel: { dismiss() },
+                onSave: { dismiss() }
+            )
+            ScrollView {
+                VStack(spacing: GowithMetrics.moduleSpacing) {
+                    VStack(spacing: 10) {
+                        (Text("Gowith")
+                            .font(.system(size: 34, weight: .heavy, design: .rounded))
+                            .tracking(-1)
+                            .foregroundStyle(GowithColor.ink)
+                         + Text(".")
+                            .font(.system(size: 34, weight: .heavy, design: .rounded))
+                            .tracking(-1)
+                            .foregroundStyle(GowithColor.accent))
+                        Text("出门带的，一件不少。")
+                            .font(.system(size: 12, weight: .semibold))
+                            .tracking(1)
+                            .foregroundStyle(GowithColor.inkSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+
+                    ContentCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Gowith 是什么")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(GowithColor.inkSecondary)
+                            Text("Gowith = Go + with，带着走。它管住「家 → 背包 → 出行 → 清点」整条链路：家里有什么、包里装了什么、出门带没带、回家丢了没——一件都看得见。")
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(GowithColor.ink)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    ContentCard(padding: 10) {
+                        HStack(spacing: 0) {
+                            aboutStat(value: "家", label: "物品放在哪")
+                            VerticalDashedLine().stroke(GowithColor.hairline, style: StrokeStyle(lineWidth: 1.5, dash: [3, 3])).frame(width: 1.5, height: 34)
+                            aboutStat(value: "背包", label: "出门装什么")
+                            VerticalDashedLine().stroke(GowithColor.hairline, style: StrokeStyle(lineWidth: 1.5, dash: [3, 3])).frame(width: 1.5, height: 34)
+                            aboutStat(value: "清点", label: "回家少没少")
+                        }
+                    }
+
+                    HStack {
+                        Text("版本 \(appVersion)")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(GowithColor.inkTertiary)
+                        Spacer()
+                        Text("数据仅存于本机")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(GowithColor.inkTertiary)
+                    }
+                    .padding(.horizontal, 6)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+                .padding(.bottom, 20)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .background(GowithColor.appBackground)
+        .preferredColorScheme(mode == .advanced ? .dark : .light)
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.hidden)
+    }
+
+    private func aboutStat(value: String, label: String) -> some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.system(size: 15, weight: .heavy, design: .rounded))
+                .foregroundStyle(GowithColor.ink)
+            Text(label)
+                .font(.system(size: 9.5, weight: .medium))
+                .foregroundStyle(GowithColor.inkTertiary)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
